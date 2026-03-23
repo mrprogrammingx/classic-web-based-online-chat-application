@@ -82,3 +82,13 @@ async def init_db():
                 pass
         if alters:
             await db.commit()
+        # add is_admin to users if missing
+        cur = await db.execute("PRAGMA table_info('users')")
+        cols = await cur.fetchall()
+        existing = {c[1] for c in cols}
+        if 'is_admin' not in existing:
+            try:
+                await db.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0")
+                await db.commit()
+            except Exception:
+                pass
