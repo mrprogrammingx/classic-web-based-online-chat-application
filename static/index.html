@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Presence Demo</title>
+</head>
+<body>
+  <h1>Presence demo</h1>
+  <div id="auth">
+    <input id="email" placeholder="email" />
+    <input id="username" placeholder="username" />
+    <input id="password" placeholder="password" type="password" />
+    <button id="register">Register</button>
+    <button id="login">Login</button>
+  </div>
+
+  <div id="me" style="display:none">
+    <p>Signed in as <span id="me-name"></span></p>
+    <p>Presence: <span id="my-presence">unknown</span></p>
+    <button id="list-sessions">List sessions</button>
+    <ul id="sessions"></ul>
+    <button id="logout">Logout</button>
+  </div>
+
+  <script src="/static/main.js"></script>
+</body>
+</html>
