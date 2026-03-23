@@ -34,3 +34,16 @@ async def delete_user(request, user=Depends(require_admin)):
         await db.execute('DELETE FROM users WHERE id = ?', (uid,))
         await db.commit()
     return {'ok': True}
+
+
+@router.post('/admin/users/promote')
+async def promote_user(request, user=Depends(require_admin)):
+    """Promote a user to admin. Body: { id: <user_id> }"""
+    body = await request.json()
+    uid = body.get('id')
+    if not uid:
+        raise HTTPException(status_code=400, detail='id required')
+    async with aiosqlite.connect(DB) as db:
+        await db.execute('UPDATE users SET is_admin = 1 WHERE id = ?', (uid,))
+        await db.commit()
+    return {'ok': True}
