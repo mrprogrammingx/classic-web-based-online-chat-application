@@ -1,9 +1,9 @@
 import time
-from fastapi import FastAPI, HTTPException, Depends, Request, Header
+from fastapi import FastAPI, HTTPException, Depends, Request, Header, Response, Cookie
 import aiosqlite
 from db import init_db, DB
 import uuid
-from utils import hash_pw, verify_pw, create_token, verify_token, store_session, remove_session, session_exists
+from utils import hash_pw, verify_pw, create_token, verify_token, store_session, remove_session, session_exists, update_session_expiry
 
 app = FastAPI()
 
@@ -11,10 +11,14 @@ app = FastAPI()
 async def startup():
     await init_db()
 
-async def require_auth(authorization: str = Header(None)):
-    if not authorization:
+async def require_auth(authorization: str = Header(None), token_cookie: str = Cookie(None)):
+    token = None
+    if authorization:
+        token = authorization.replace('Bearer ', '')
+    elif token_cookie:
+        token = token_cookie
+    if not token:
         raise HTTPException(status_code=401, detail='missing token')
-    token = authorization.replace('Bearer ', '')
     try:
         data = verify_token(token)
     except Exception:
@@ -48,7 +52,10 @@ async def register(request: Request):
     expires = int(time.time() + 3600*24*30)
     await store_session(jti, user['id'], expires)
     token = create_token({'id': user['id'], 'email': user['email'], 'username': user['username'], 'jti': jti}, exp_seconds=3600*24*30)
-    return {'user': user, 'token': token}
+    # set HttpOnly cookie for persistent login across browser close/reopen
+    resp = Response({'user': user, 'token': token})
+    resp.set_cookie(key='token', value=token, httponly=True, samesite='lax')
+    return resp
 
 @app.post('/login')
 async def login(request: Request):
@@ -67,13 +74,19 @@ async def login(request: Request):
     expires = int(time.time() + 3600*24*30)
     await store_session(jti, user['id'], expires)
     token = create_token({'id': user['id'], 'email': user['email'], 'username': user['username'], 'jti': jti}, exp_seconds=3600*24*30)
-    return {'user': user, 'token': token}
+    resp = Response({'user': user, 'token': token})
+    resp.set_cookie(key='token', value=token, httponly=True, samesite='lax')
+    return resp
 
 @app.post('/logout')
-async def logout(authorization: str = Header(None)):
-    if not authorization:
+async def logout(authorization: str = Header(None), token_cookie: str = Cookie(None)):
+    token = None
+    if authorization:
+        token = authorization.replace('Bearer ', '')
+    elif token_cookie:
+        token = token_cookie
+    if not token:
         raise HTTPException(status_code=401, detail='missing token')
-    token = authorization.replace('Bearer ', '')
     try:
         data = verify_token(token)
     except Exception:
@@ -81,7 +94,33 @@ async def logout(authorization: str = Header(None)):
     jti = data.get('jti')
     if jti:
         await remove_session(jti)
-    return {'ok': True}
+    resp = Response({'ok': True})
+    resp.delete_cookie('token')
+    return resp
+
+@app.post('/refresh')
+async def refresh(authorization: str = Header(None), token_cookie: str = Cookie(None)):
+    token = None
+    if authorization:
+        token = authorization.replace('Bearer ', '')
+    elif token_cookie:
+        token = token_cookie
+    if not token:
+        raise HTTPException(status_code=401, detail='missing token')
+    try:
+        data = verify_token(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail='invalid token')
+    jti = data.get('jti')
+    if not jti or not await session_exists(jti):
+        raise HTTPException(status_code=401, detail='invalid or expired session')
+    # extend session
+    new_expires = int(time.time() + 3600*24*30)
+    await update_session_expiry(jti, new_expires)
+    new_token = create_token({'id': data['id'], 'email': data['email'], 'username': data['username'], 'jti': jti}, exp_seconds=3600*24*30)
+    resp = Response({'token': new_token})
+    resp.set_cookie('token', new_token, httponly=True, samesite='lax')
+    return resp
 
 @app.post('/password-reset')
 async def password_reset(request: Request):

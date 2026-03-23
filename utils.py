@@ -39,6 +39,11 @@ async def session_exists(jti: str):
         row = await cur.fetchone()
         return bool(row)
 
+async def update_session_expiry(jti: str, expires_at: int):
+    async with aiosqlite.connect(DB) as db:
+        await db.execute('UPDATE sessions SET expires_at = ? WHERE jti = ?', (expires_at, jti))
+        await db.commit()
+
 def verify_token(token: str):
     return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
 
