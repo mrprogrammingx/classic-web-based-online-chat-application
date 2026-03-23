@@ -1,5 +1,7 @@
 import time
 from fastapi import FastAPI, HTTPException, Depends, Request, Header, Response, Cookie
+from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 import aiosqlite
 from db import init_db, DB
 import uuid
@@ -18,9 +20,17 @@ from presence import router as presence_router
 
 app = FastAPI()
 
+# serve static files (demo UI)
+app.mount('/static', StaticFiles(directory='static'), name='static')
+
 @app.on_event('startup')
 async def startup():
     await init_db()
+
+
+@app.get('/')
+async def root():
+    return RedirectResponse(url='/static/index.html')
 
 async def require_auth(authorization: str = Header(None), token_cookie: str = Cookie(None)):
     token = None
@@ -66,7 +76,7 @@ async def register(request: Request):
     await store_session(jti, user['id'], expires, ip=ip, user_agent=ua)
     token = create_token({'id': user['id'], 'email': user['email'], 'username': user['username'], 'jti': jti}, exp_seconds=3600*24*30)
     # set HttpOnly cookie for persistent login across browser close/reopen
-    resp = Response({'user': user, 'token': token})
+    resp = JSONResponse({'user': user, 'token': token})
     resp.set_cookie(key='token', value=token, httponly=True, samesite='lax')
     return resp
 
@@ -89,7 +99,7 @@ async def login(request: Request):
     ua = request.headers.get('user-agent')
     await store_session(jti, user['id'], expires, ip=ip, user_agent=ua)
     token = create_token({'id': user['id'], 'email': user['email'], 'username': user['username'], 'jti': jti}, exp_seconds=3600*24*30)
-    resp = Response({'user': user, 'token': token})
+    resp = JSONResponse({'user': user, 'token': token})
     resp.set_cookie(key='token', value=token, httponly=True, samesite='lax')
     return resp
 
@@ -109,7 +119,7 @@ async def logout(authorization: str = Header(None), token_cookie: str = Cookie(N
     jti = data.get('jti')
     if jti:
         await remove_session(jti)
-    resp = Response({'ok': True})
+    resp = JSONResponse({'ok': True})
     resp.delete_cookie('token')
     return resp
 
@@ -137,7 +147,7 @@ async def refresh(authorization: str = Header(None), token_cookie: str = Cookie(
     new_expires = int(time.time() + 3600*24*30)
     await update_session_expiry(jti, new_expires)
     new_token = create_token({'id': data['id'], 'email': data['email'], 'username': data['username'], 'jti': jti}, exp_seconds=3600*24*30)
-    resp = Response({'token': new_token})
+    resp = JSONResponse({'token': new_token})
     resp.set_cookie('token', new_token, httponly=True, samesite='lax')
     return resp
 
