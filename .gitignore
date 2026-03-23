@@ -139,6 +139,7 @@ celerybeat.pid
 .envrc
 .venv
 env/
+auth.db
 venv/
 ENV/
 env.bak/
