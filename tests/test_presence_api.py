@@ -30,7 +30,7 @@ def server_available():
 @pytest.mark.skipif(not server_available(), reason="server not running on localhost:8000")
 def test_register_login_and_sessions():
     email = f"test+{uuid.uuid4().hex}@example.com"
-    username = 'testuser'
+    username = 'testuser-' + uuid.uuid4().hex[:8]
     pw = 'Secret123!'
     # register
     r = requests.post(BASE + '/register', json={'email': email, 'username': username, 'password': pw})
@@ -59,7 +59,7 @@ def test_register_login_and_sessions():
 @pytest.mark.skipif(not server_available(), reason="server not running on localhost:8000")
 def test_username_immutable():
     email = f"test+{uuid.uuid4().hex}@example.com"
-    username = 'immutable'
+    username = 'immutable-' + uuid.uuid4().hex[:8]
     pw = 'Secret123!'
     r = requests.post(BASE + '/register', json={'email': email, 'username': username, 'password': pw})
     assert r.status_code == 200
@@ -74,7 +74,7 @@ def test_username_immutable():
 @pytest.mark.skipif(not server_available(), reason="server not running on localhost:8000")
 def test_presence_heartbeat_and_close():
     email = f"test+{uuid.uuid4().hex}@example.com"
-    username = 'presence'
+    username = 'presence-' + uuid.uuid4().hex[:8]
     pw = 'Secret123!'
     r = requests.post(BASE + '/register', json={'email': email, 'username': username, 'password': pw})
     assert r.status_code == 200
