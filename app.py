@@ -172,3 +172,33 @@ async def delete_account(user=Depends(require_auth)):
         await db.execute('DELETE FROM users WHERE id = ?', (uid,))
         await db.commit()
         return {'ok': True}
+
+
+@app.patch('/me')
+async def update_profile(request: Request, user=Depends(require_auth)):
+    """Update the authenticated user's profile.
+
+    Rules enforced:
+    - Username is immutable after registration. Any attempt to include `username` in the
+      request body will be rejected with HTTP 400.
+    - Email may be updated without verification (by design for this project).
+    """
+    body = await request.json()
+    # explicit rule: username cannot be changed
+    if 'username' in body:
+        raise HTTPException(status_code=400, detail='username is immutable after registration')
+
+    email = body.get('email')
+    if not email:
+        raise HTTPException(status_code=400, detail='nothing to update')
+
+    async with aiosqlite.connect(DB) as db:
+        try:
+            await db.execute('UPDATE users SET email = ? WHERE id = ?', (email, user['id']))
+            await db.commit()
+        except aiosqlite.IntegrityError:
+            # unique constraint on email
+            raise HTTPException(status_code=409, detail='email already taken')
+        cur = await db.execute('SELECT id, email, username FROM users WHERE id = ?', (user['id'],))
+        row = await cur.fetchone()
+        return {'user': {'id': row[0], 'email': row[1], 'username': row[2]}}
