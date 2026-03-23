@@ -12,7 +12,7 @@ async function register(){
   if(r.status===200){
     token = data.token;
     jti = data.token && parseJwt(data.token).jti;
-    onLogin(data.user);
+    await afterAuth(data.user);
   } else {
     alert(JSON.stringify(data));
   }
@@ -26,7 +26,7 @@ async function login(){
   if(r.status===200){
     token = data.token;
     jti = data.token && parseJwt(data.token).jti;
-    onLogin(data.user);
+    await afterAuth(data.user);
   } else {
     alert(JSON.stringify(data));
   }
@@ -64,6 +64,20 @@ function onLogin(user){
   startHeartbeat();
 }
 
+async function fetchMeAndMaybeShowAdmin(){
+  try{
+    const r = await fetch(BASE + '/me', {headers:{'Authorization':'Bearer ' + token}});
+    if(r.status !== 200) return;
+    const data = await r.json();
+    const u = data.user;
+    if(u && u.is_admin){
+      document.getElementById('admin-open').style.display = 'inline';
+    } else {
+      document.getElementById('admin-open').style.display = 'none';
+    }
+  }catch(e){ console.warn('failed to fetch /me', e) }
+}
+
 async function heartbeat(){
   if(!token || !jti) return;
   await fetch(BASE + '/presence/heartbeat', {method:'POST', headers:{'content-type':'application/json','Authorization':'Bearer ' + token}, body: JSON.stringify({tab_id: tabId, jti})});
@@ -72,6 +86,12 @@ async function heartbeat(){
 function startHeartbeat(){
   heartbeat();
   window._hb = setInterval(heartbeat, 20000);
+}
+
+// after login/register, fetch authoritative /me to decide admin visibility
+async function afterAuth(user){
+  onLogin(user);
+  await fetchMeAndMaybeShowAdmin();
 }
 
 window.addEventListener('beforeunload', async ()=>{
@@ -107,6 +127,7 @@ document.getElementById('admin-close').onclick = ()=>{ document.getElementById('
 
 // show admin button for admins (quick heuristic: fetch sessions and check for is_admin via /sessions is not sufficient; we show button and the server will enforce admin rights)
 function maybeShowAdmin(){
-  document.getElementById('admin-open').style.display = 'inline';
+  // kept for backward compatibility; prefer /me for authoritative info
+  // no-op now; visibility controlled by fetchMeAndMaybeShowAdmin
 }
 

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 import aiosqlite
 from utils import require_auth
 from db import DB
@@ -25,7 +25,7 @@ async def list_users(user=Depends(require_admin)):
 
 
 @router.post('/admin/users/delete')
-async def delete_user(request, user=Depends(require_admin)):
+async def delete_user(request: Request, user=Depends(require_admin)):
     body = await request.json()
     uid = body.get('id')
     if not uid:
@@ -37,7 +37,7 @@ async def delete_user(request, user=Depends(require_admin)):
 
 
 @router.post('/admin/users/promote')
-async def promote_user(request, user=Depends(require_admin)):
+async def promote_user(request: Request, user=Depends(require_admin)):
     """Promote a user to admin. Body: { id: <user_id> }"""
     body = await request.json()
     uid = body.get('id')

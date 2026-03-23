@@ -233,3 +233,18 @@ async def update_profile(request: Request, user=Depends(require_auth)):
         cur = await db.execute('SELECT id, email, username FROM users WHERE id = ?', (user['id'],))
         row = await cur.fetchone()
         return {'user': {'id': row[0], 'email': row[1], 'username': row[2]}}
+
+
+@app.get('/me')
+async def me(user=Depends(require_auth)):
+    """Return authoritative user metadata for the currently authenticated user.
+
+    This includes the `is_admin` flag so the client can decide whether to
+    reveal admin UI elements.
+    """
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute('SELECT id, email, username, is_admin FROM users WHERE id = ?', (user['id'],))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='user not found')
+        return {'user': {'id': row[0], 'email': row[1], 'username': row[2], 'is_admin': bool(row[3])}}

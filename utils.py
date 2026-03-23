@@ -17,7 +17,8 @@ def verify_pw(pw: str, h: str) -> bool:
 
 def create_token(payload: dict, exp_seconds: int = 3600*24*7):
     data = payload.copy()
-    data['exp'] = time.time() + exp_seconds
+    # ensure exp is an integer timestamp (PyJWT expects a numeric date)
+    data['exp'] = int(time.time() + exp_seconds)
     # optional jti for session identification
     if 'jti' in payload:
         data['jti'] = payload['jti']
