@@ -63,3 +63,22 @@ async def init_db():
         );
         ''')
         await db.commit()
+        # run migrations for existing DB: add columns to sessions if missing
+        cur = await db.execute("PRAGMA table_info('sessions')")
+        cols = await cur.fetchall()
+        existing = {c[1] for c in cols}
+        alters = []
+        if 'ip' not in existing:
+            alters.append("ALTER TABLE sessions ADD COLUMN ip TEXT")
+        if 'user_agent' not in existing:
+            alters.append("ALTER TABLE sessions ADD COLUMN user_agent TEXT")
+        if 'last_active' not in existing:
+            alters.append("ALTER TABLE sessions ADD COLUMN last_active INTEGER")
+        for stmt in alters:
+            try:
+                await db.execute(stmt)
+            except Exception:
+                # ignore if alter fails for any reason
+                pass
+        if alters:
+            await db.commit()
