@@ -44,6 +44,21 @@ async def init_db():
             user_id INTEGER NOT NULL,
             created_at INTEGER NOT NULL,
             expires_at INTEGER NOT NULL,
+            ip TEXT,
+            user_agent TEXT,
+            last_active INTEGER,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS tab_presence (
+            tab_id TEXT PRIMARY KEY,
+            jti TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            last_active INTEGER NOT NULL,
+            user_agent TEXT,
+            ip TEXT,
+            FOREIGN KEY(jti) REFERENCES sessions(jti) ON DELETE CASCADE,
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
         ''')

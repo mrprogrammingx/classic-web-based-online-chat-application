@@ -3,6 +3,7 @@ import jwt
 from passlib.context import CryptContext
 import aiosqlite
 from db import DB
+from fastapi import HTTPException, Header, Cookie
 
 pwd = CryptContext(schemes=['pbkdf2_sha256'], deprecated='auto')
 JWT_SECRET = 'change_this_secret'
@@ -22,10 +23,10 @@ def create_token(payload: dict, exp_seconds: int = 3600*24*7):
         data['jti'] = payload['jti']
     return jwt.encode(data, JWT_SECRET, algorithm=JWT_ALGO)
 
-async def store_session(jti: str, user_id: int, expires_at: int):
+async def store_session(jti: str, user_id: int, expires_at: int, ip: str = None, user_agent: str = None, last_active: int = None):
     async with aiosqlite.connect(DB) as db:
-        await db.execute('INSERT INTO sessions (jti, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)',
-                         (jti, user_id, int(time.time()), expires_at))
+        await db.execute('INSERT INTO sessions (jti, user_id, created_at, expires_at, ip, user_agent, last_active) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                         (jti, user_id, int(time.time()), expires_at, ip, user_agent, last_active or int(time.time())))
         await db.commit()
 
 async def remove_session(jti: str):
@@ -51,3 +52,71 @@ async def get_user_by_email(email: str):
     async with aiosqlite.connect(DB) as db:
         cur = await db.execute('SELECT id, email, username, password FROM users WHERE email = ?', (email,))
         return await cur.fetchone()
+
+
+async def require_auth(authorization: str = Header(None), token_cookie: str = Cookie(None)):
+    token = None
+    if authorization:
+        token = authorization.replace('Bearer ', '')
+    elif token_cookie:
+        token = token_cookie
+    if not token:
+        raise HTTPException(status_code=401, detail='missing token')
+    try:
+        data = verify_token(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail='invalid token')
+    # ensure the session (jti) still exists
+    jti = data.get('jti')
+    if not jti or not await session_exists(jti):
+        raise HTTPException(status_code=401, detail='invalid or expired session')
+    return data
+
+
+async def list_sessions_for_user(user_id: int):
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute('SELECT jti, created_at, expires_at, ip, user_agent, last_active FROM sessions WHERE user_id = ?', (user_id,))
+        rows = await cur.fetchall()
+        return [{'jti': r[0], 'created_at': r[1], 'expires_at': r[2], 'ip': r[3], 'user_agent': r[4], 'last_active': r[5]} for r in rows]
+
+
+async def remove_session_by_jti(jti: str):
+    await remove_session(jti)
+
+
+async def touch_tab(tab_id: str, jti: str, user_id: int, ip: str = None, user_agent: str = None):
+    now = int(time.time())
+    async with aiosqlite.connect(DB) as db:
+        try:
+            await db.execute('INSERT INTO tab_presence (tab_id, jti, user_id, created_at, last_active, user_agent, ip) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                             (tab_id, jti, user_id, now, now, user_agent, ip))
+        except aiosqlite.IntegrityError:
+            await db.execute('UPDATE tab_presence SET last_active = ?, user_agent = ?, ip = ? WHERE tab_id = ?', (now, user_agent, ip, tab_id))
+        await db.commit()
+
+
+async def remove_tab(tab_id: str):
+    async with aiosqlite.connect(DB) as db:
+        await db.execute('DELETE FROM tab_presence WHERE tab_id = ?', (tab_id,))
+        await db.commit()
+
+
+async def get_presence_status(user_id: int):
+    """Return presence status for a given user_id: 'online', 'AFK', or 'offline'.
+
+    Rules implemented:
+    - If at least one tab has last_active within 60s -> 'online'
+    - If all tabs exist but all last_active older than 60s -> 'AFK'
+    - If no tabs -> 'offline'
+    """
+    cutoff = int(time.time()) - 60
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute('SELECT COUNT(*) FROM tab_presence WHERE user_id = ?', (user_id,))
+        total = (await cur.fetchone())[0]
+        if total == 0:
+            return 'offline'
+        cur = await db.execute('SELECT COUNT(*) FROM tab_presence WHERE user_id = ? AND last_active > ?', (user_id, cutoff))
+        active = (await cur.fetchone())[0]
+        if active > 0:
+            return 'online'
+        return 'AFK'

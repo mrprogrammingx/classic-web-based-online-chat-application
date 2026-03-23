@@ -3,7 +3,18 @@ from fastapi import FastAPI, HTTPException, Depends, Request, Header, Response, 
 import aiosqlite
 from db import init_db, DB
 import uuid
-from utils import hash_pw, verify_pw, create_token, verify_token, store_session, remove_session, session_exists, update_session_expiry
+from utils import (
+    hash_pw,
+    verify_pw,
+    create_token,
+    verify_token,
+    store_session,
+    remove_session,
+    session_exists,
+    update_session_expiry,
+    require_auth,
+)
+from presence import router as presence_router
 
 app = FastAPI()
 
@@ -50,7 +61,9 @@ async def register(request: Request):
     # create session jti and token
     jti = str(uuid.uuid4())
     expires = int(time.time() + 3600*24*30)
-    await store_session(jti, user['id'], expires)
+    ip = request.client.host if request.client else None
+    ua = request.headers.get('user-agent')
+    await store_session(jti, user['id'], expires, ip=ip, user_agent=ua)
     token = create_token({'id': user['id'], 'email': user['email'], 'username': user['username'], 'jti': jti}, exp_seconds=3600*24*30)
     # set HttpOnly cookie for persistent login across browser close/reopen
     resp = Response({'user': user, 'token': token})
@@ -72,7 +85,9 @@ async def login(request: Request):
         user = {'id': row[0], 'email': row[1], 'username': row[2]}
     jti = str(uuid.uuid4())
     expires = int(time.time() + 3600*24*30)
-    await store_session(jti, user['id'], expires)
+    ip = request.client.host if request.client else None
+    ua = request.headers.get('user-agent')
+    await store_session(jti, user['id'], expires, ip=ip, user_agent=ua)
     token = create_token({'id': user['id'], 'email': user['email'], 'username': user['username'], 'jti': jti}, exp_seconds=3600*24*30)
     resp = Response({'user': user, 'token': token})
     resp.set_cookie(key='token', value=token, httponly=True, samesite='lax')
@@ -97,6 +112,10 @@ async def logout(authorization: str = Header(None), token_cookie: str = Cookie(N
     resp = Response({'ok': True})
     resp.delete_cookie('token')
     return resp
+
+
+# include presence/session router
+app.include_router(presence_router)
 
 @app.post('/refresh')
 async def refresh(authorization: str = Header(None), token_cookie: str = Cookie(None)):
