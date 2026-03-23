@@ -7,4 +7,10 @@ fi
 EMAIL="$1"
 USER="$2"
 PASS="$3"
-python3 scripts/manage_users.py create --email "$EMAIL" --username "$USER" --password "$PASS" --admin
+# Prefer project virtualenv if available
+PY="$(pwd)/.venv/bin/python3"
+if [ -x "$PY" ]; then
+  "$PY" scripts/manage_users.py create --email "$EMAIL" --username "$USER" --password "$PASS" --admin
+else
+  python3 scripts/manage_users.py create --email "$EMAIL" --username "$USER" --password "$PASS" --admin
+fi
