@@ -17,6 +17,12 @@
   <div id="me" style="display:none">
     <p>Signed in as <span id="me-name"></span></p>
     <p>Presence: <span id="my-presence">unknown</span></p>
+    <button id="admin-open" style="display:none">Admin</button>
+    <div id="admin-modal" style="display:none; position:fixed; left:20%; top:20%; width:60%; background:#fff; border:1px solid #ccc; padding:10px;">
+      <h3>Admin - Users</h3>
+      <button id="admin-close">Close</button>
+      <ul id="admin-users"></ul>
+    </div>
     <button id="list-sessions">List sessions</button>
     <ul id="sessions"></ul>
     <button id="logout">Logout</button>

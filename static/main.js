@@ -86,3 +86,27 @@ document.getElementById('logout').onclick = async ()=>{
   await fetch(BASE + '/logout', {method:'POST', headers:{'Authorization':'Bearer ' + token}});
   token = null; jti = null; document.getElementById('auth').style.display='block'; document.getElementById('me').style.display='none';
 }
+
+// admin UI
+async function openAdmin(){
+  const r = await fetch(BASE + '/admin/users', {headers:{'Authorization':'Bearer ' + token}});
+  if(r.status === 403){ alert('admin required'); return }
+  const data = await r.json();
+  const ul = document.getElementById('admin-users'); ul.innerHTML = '';
+  for(const u of data.users){
+    const li = document.createElement('li');
+    li.textContent = `${u.id} - ${u.email} - ${u.username} - admin:${u.is_admin}`;
+    const btn = document.createElement('button'); btn.textContent = 'Delete';
+    btn.onclick = async ()=>{ await fetch(BASE + '/admin/users/delete', {method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer ' + token}, body: JSON.stringify({id: u.id})}); openAdmin(); }
+    li.appendChild(btn); ul.appendChild(li);
+  }
+  document.getElementById('admin-modal').style.display = 'block';
+}
+document.getElementById('admin-open').onclick = openAdmin;
+document.getElementById('admin-close').onclick = ()=>{ document.getElementById('admin-modal').style.display='none' }
+
+// show admin button for admins (quick heuristic: fetch sessions and check for is_admin via /sessions is not sufficient; we show button and the server will enforce admin rights)
+function maybeShowAdmin(){
+  document.getElementById('admin-open').style.display = 'inline';
+}
+

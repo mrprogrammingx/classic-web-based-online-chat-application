@@ -17,6 +17,7 @@ from utils import (
     require_auth,
 )
 from presence import router as presence_router
+from admin import router as admin_router
 
 app = FastAPI()
 
@@ -126,6 +127,7 @@ async def logout(authorization: str = Header(None), token_cookie: str = Cookie(N
 
 # include presence/session router
 app.include_router(presence_router)
+app.include_router(admin_router)
 
 @app.post('/refresh')
 async def refresh(authorization: str = Header(None), token_cookie: str = Cookie(None)):
