@@ -31,7 +31,10 @@ document.addEventListener('DOMContentLoaded', ()=>{
     roomsList.innerHTML = '';
     rooms.forEach(r=>{
       const li = document.createElement('li');
-      li.textContent = r.name;
+      const title = document.createElement('span');
+      title.textContent = r.name;
+      li.appendChild(title);
+      const badge = document.createElement('span'); badge.className = 'unread-badge hidden'; badge.textContent = '0'; li.appendChild(badge);
       li.dataset.id = r.id;
       li.addEventListener('click', ()=>selectRoom(r));
       roomsList.appendChild(li);
@@ -53,10 +56,35 @@ document.addEventListener('DOMContentLoaded', ()=>{
     contactsList.innerHTML = '';
     contacts.forEach(c=>{
       const li = document.createElement('li');
-      li.textContent = c.name;
+      const title = document.createElement('span'); title.textContent = c.name; li.appendChild(title);
+      const badge = document.createElement('span'); badge.className='unread-badge hidden'; badge.textContent='0'; li.appendChild(badge);
       li.dataset.id = c.id;
       li.addEventListener('click', ()=>openDialog(c));
       contactsList.appendChild(li);
+    });
+  }
+
+  // Load unread summary from server and update badges
+  async function loadUnreadSummary(){
+    const data = await fetchJSON('/notifications/unread-summary');
+    if(!data) return;
+    const roomMap = {};
+    (data.rooms||[]).forEach(r=>{ roomMap[String(r.room_id)] = r.unread_count; });
+    const dialogsMap = {};
+    (data.dialogs||[]).forEach(d=>{ dialogsMap[String(d.other_id)] = d.unread_count; });
+    // update room badges
+    Array.from(roomsList.children).forEach(li=>{
+      const id = li.dataset.id;
+      const badge = li.querySelector('.unread-badge');
+      const count = roomMap[String(id)] || 0;
+      if(badge){ badge.textContent = String(count); badge.classList.toggle('hidden', count===0); }
+    });
+    // update contact/dialog badges
+    Array.from(contactsList.children).forEach(li=>{
+      const id = li.dataset.id;
+      const badge = li.querySelector('.unread-badge');
+      const count = dialogsMap[String(id)] || 0;
+      if(badge){ badge.textContent = String(count); badge.classList.toggle('hidden', count===0); }
     });
   }
 
@@ -72,6 +100,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
     loadRoomMessages(r.id);
     // load members and presence
     loadRoomMembers(r.id);
+    // refresh unread summary shortly after opening (server marks read when messages are loaded)
+    setTimeout(()=>{ try{ loadUnreadSummary(); }catch(e){} }, 400);
   }
   function openDialog(contact){
     isDialog = true;
@@ -79,6 +109,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
     roomTitle.textContent = contact.name + ' (dialog)';
     messagesEl.innerHTML = '';
     loadDialogMessages(contact.id);
+    setTimeout(()=>{ try{ loadUnreadSummary(); }catch(e){} }, 400);
   }
 
   function appendMessage(msg){
@@ -550,6 +581,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
     // ready: load data
     await loadRooms();
     await loadContacts();
+    // update unread notification badges
+    try{ await loadUnreadSummary(); }catch(e){}
   }
 
   // simple escape for username rendering
