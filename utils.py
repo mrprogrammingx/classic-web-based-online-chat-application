@@ -3,7 +3,7 @@ import jwt
 from passlib.context import CryptContext
 import aiosqlite
 from db import DB
-from fastapi import HTTPException, Header, Cookie
+from fastapi import HTTPException, Request
 
 pwd = CryptContext(schemes=['pbkdf2_sha256'], deprecated='auto')
 JWT_SECRET = 'change_this_secret'
@@ -55,16 +55,18 @@ async def get_user_by_email(email: str):
         return await cur.fetchone()
 
 
-async def require_auth(authorization: str = Header(None), token_cookie: str = Cookie(None)):
-    token = None
-    if authorization:
-        token = authorization.replace('Bearer ', '')
-    elif token_cookie:
-        token = token_cookie
-    if not token:
+async def require_auth(request: Request):
+    auth = request.headers.get('authorization')
+    cookie_token = request.cookies.get('token')
+    token_val = None
+    if auth:
+        token_val = auth.replace('Bearer ', '')
+    elif cookie_token:
+        token_val = cookie_token
+    if not token_val:
         raise HTTPException(status_code=401, detail='missing token')
     try:
-        data = verify_token(token)
+        data = verify_token(token_val)
     except Exception:
         raise HTTPException(status_code=401, detail='invalid token')
     # ensure the session (jti) still exists

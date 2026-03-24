@@ -18,6 +18,8 @@ from utils import (
 )
 from presence import router as presence_router
 from admin import router as admin_router
+from friends import router as friends_router
+from messages import router as messages_router
 
 app = FastAPI()
 
@@ -33,19 +35,21 @@ async def startup():
 async def root():
     return RedirectResponse(url='/static/index.html')
 
-async def require_auth(authorization: str = Header(None), token: str = Cookie(None)):
+async def require_auth(request: Request):
+    # prefer Authorization header, fall back to HttpOnly cookie named 'token'
+    auth = request.headers.get('authorization')
+    cookie_token = request.cookies.get('token')
     token_val = None
-    if authorization:
-        token_val = authorization.replace('Bearer ', '')
-    elif token:
-        token_val = token
-    if not token:
+    if auth:
+        token_val = auth.replace('Bearer ', '')
+    elif cookie_token:
+        token_val = cookie_token
+    if not token_val:
         raise HTTPException(status_code=401, detail='missing token')
     try:
         data = verify_token(token_val)
     except Exception:
         raise HTTPException(status_code=401, detail='invalid token')
-    # ensure the session (jti) still exists
     jti = data.get('jti')
     if not jti or not await session_exists(jti):
         raise HTTPException(status_code=401, detail='invalid or expired session')
@@ -128,6 +132,8 @@ async def logout(authorization: str = Header(None), token: str = Cookie(None)):
 # include presence/session router
 app.include_router(presence_router)
 app.include_router(admin_router)
+app.include_router(friends_router)
+app.include_router(messages_router)
 
 @app.post('/refresh')
 async def refresh(authorization: str = Header(None), token: str = Cookie(None)):

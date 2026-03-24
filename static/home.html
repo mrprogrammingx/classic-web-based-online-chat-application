@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Home</title>
+</head>
+<body>
+  <h1>Presence demo - Home</h1>
+  <div id="me" style="display:none">
+    <p>Signed in as <span id="me-name"></span></p>
+  <p>Presence: <span id="my-presence-dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:gray;margin-right:8px;vertical-align:middle"></span><span id="my-presence">unknown</span></p>
+    <button id="admin-open" style="display:none">Admin</button>
+    <div id="admin-modal" style="display:none; position:fixed; left:20%; top:20%; width:60%; background:#fff; border:1px solid #ccc; padding:10px;">
+      <h3>Admin - Users</h3>
+      <button id="admin-close">Close</button>
+      <ul id="admin-users"></ul>
+    </div>
+    <button id="list-sessions">List sessions</button>
+    <ul id="sessions"></ul>
+    <button id="logout">Logout</button>
+    <h3>Friends</h3>
+    <div id="status" style="padding:8px;margin:8px 0;color:#222;background:#f3f3f3;border:1px solid #ddd;display:none"></div>
+  <div style="margin-bottom:8px"><button id="debug-inspect">Debug Inspect</button></div>
+    <div>
+      <input id="friend-id-input" placeholder="friend id" />
+      <button id="add-friend">Add</button>
+    </div>
+    <div style="margin-top:8px">
+      <input id="friend-username-input" placeholder="friend username" />
+      <button id="request-by-username">Send Request</button>
+    </div>
+    <h4>Incoming Requests</h4>
+    <ul id="incoming-requests"></ul>
+    <ul id="friends-list"></ul>
+  </div>
+
+  <script src="/static/main.js"></script>
+</body>
+</html>

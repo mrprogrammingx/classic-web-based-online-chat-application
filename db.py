@@ -92,3 +92,53 @@ async def init_db():
                 await db.commit()
             except Exception:
                 pass
+        # create friends table if missing
+        await db.executescript('''
+        CREATE TABLE IF NOT EXISTS friends (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            friend_id INTEGER NOT NULL,
+            created_at INTEGER,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(friend_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(user_id, friend_id)
+        );
+        ''')
+        await db.commit()
+        # create friend_requests and bans tables if missing
+        await db.executescript('''
+        CREATE TABLE IF NOT EXISTS friend_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_id INTEGER NOT NULL,
+            to_id INTEGER NOT NULL,
+            message TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at INTEGER,
+            FOREIGN KEY(from_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(to_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS bans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            banner_id INTEGER NOT NULL,
+            banned_id INTEGER NOT NULL,
+            created_at INTEGER,
+            FOREIGN KEY(banner_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(banned_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(banner_id, banned_id)
+        );
+        ''')
+        await db.commit()
+        # create private_messages table for 1:1 messages
+        await db.executescript('''
+        CREATE TABLE IF NOT EXISTS private_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_id INTEGER NOT NULL,
+            to_id INTEGER NOT NULL,
+            text TEXT,
+            created_at INTEGER,
+            FOREIGN KEY(from_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY(to_id) REFERENCES users(id) ON DELETE SET NULL
+        );
+        ''')
+        await db.commit()

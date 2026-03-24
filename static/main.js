@@ -120,6 +120,21 @@ function parseJwt (token) {
     }catch(e){return {}};
 }
 
+function authHeaders(contentType){
+  const h = {};
+  if(contentType) h['Content-Type'] = contentType;
+  if(token) h['Authorization'] = 'Bearer ' + token;
+  return h;
+}
+
+function showStatus(txt, visible=true, timeout=4000){
+  const el = document.getElementById('status');
+  if(!el) return;
+  el.style.display = visible ? 'block' : 'none';
+  el.textContent = txt;
+  if(visible && timeout>0){ setTimeout(()=>{ el.style.display='none' }, timeout) }
+}
+
 function onLogin(user){
   const meEl = document.getElementById('me');
   if(meEl){
@@ -164,6 +179,13 @@ function startPresencePolling(userId){
       if(r.status !== 200) return;
       const data = await r.json();
       const el = document.getElementById('my-presence'); if(el) el.textContent = data.status || 'unknown';
+      const dot = document.getElementById('my-presence-dot');
+      if(dot){
+        const status = (data.status || '').toLowerCase();
+        if(status === 'online') dot.style.background = 'green';
+        else if(status === 'afk') dot.style.background = 'orange';
+        else dot.style.background = 'gray';
+      }
     }catch(e){ console.warn('presence poll failed', e); }
   }
   update();
@@ -181,6 +203,9 @@ async function afterAuth(user){
   }
   // still refresh authoritative data in background
   fetchMeAndMaybeShowAdmin();
+  // load friends and incoming requests so UI is populated
+  try{ loadFriends(); }catch(e){}
+  try{ loadIncomingRequests(); }catch(e){}
 }
 
 window.addEventListener('beforeunload', async ()=>{
@@ -190,10 +215,47 @@ window.addEventListener('beforeunload', async ()=>{
 const regBtn = document.getElementById('register'); if(regBtn) regBtn.onclick = register;
 const loginBtn = document.getElementById('login'); if(loginBtn) loginBtn.onclick = login;
 const listBtn = document.getElementById('list-sessions'); if(listBtn) listBtn.onclick = listSessions;
+const addFriendBtn = document.getElementById('add-friend'); if(addFriendBtn) addFriendBtn.onclick = async ()=>{
+  const fid = parseInt(document.getElementById('friend-id-input').value || '0');
+  if(!fid) return alert('enter numeric friend id');
+  try{
+  addFriendBtn.disabled = true;
+  showStatus('Sending friend add...');
+  console.log('POST /friends/add', { friend_id: fid });
+  const r = await fetch(BASE + '/friends/add', {method:'POST', credentials: 'include', headers: authHeaders('application/json'), body: JSON.stringify({friend_id: fid})});
+  console.log('/friends/add response', r.status, await r.clone().text());
+  if(r.status===200) await loadFriends(); else { const body = await r.json().catch(()=>null); showStatus('Failed: ' + JSON.stringify(body)); alert(JSON.stringify(body)); }
+  }catch(e){alert('failed to add friend')}
+  finally{ addFriendBtn.disabled = false }
+}
+
+const requestByUsernameBtn = document.getElementById('request-by-username'); if(requestByUsernameBtn) requestByUsernameBtn.onclick = async ()=>{
+  const uname = document.getElementById('friend-username-input').value || '';
+  if(!uname) return alert('enter username');
+  try{
+  requestByUsernameBtn.disabled = true;
+  showStatus('Sending friend request...');
+  console.log('POST /friends/request', { username: uname });
+  const r = await fetch(BASE + '/friends/request', {method:'POST', credentials: 'include', headers: authHeaders('application/json'), body: JSON.stringify({username: uname, message: 'hi'})});
+  console.log('/friends/request response', r.status, await r.clone().text());
+  if(r.status === 200){ await loadIncomingRequests(); await loadFriends(); showStatus('Request sent'); alert('request sent') } else { const body = await r.json().catch(()=>null); showStatus('Failed: ' + JSON.stringify(body)); alert(JSON.stringify(body)) }
+  }catch(e){ alert('failed to send request') }
+  finally{ requestByUsernameBtn.disabled = false }
+}
 
 const logoutBtn = document.getElementById('logout'); if(logoutBtn) logoutBtn.onclick = async ()=>{
   await fetch(BASE + '/logout', {method:'POST', headers:{'Authorization':'Bearer ' + token}, credentials: 'include'});
   token = null; jti = null; location.href = '/static/login.html';
+}
+
+const debugBtn = document.getElementById('debug-inspect'); if(debugBtn) debugBtn.onclick = async ()=>{
+  try{
+    showStatus('Inspecting...');
+    const r = await fetch(BASE + '/debug/inspect', {credentials: 'include'});
+    const data = await r.json();
+    console.log('/debug/inspect', data);
+    showStatus(JSON.stringify(data), true, 10000);
+  }catch(e){ console.warn('debug inspect failed', e); showStatus('inspect failed'); }
 }
 
 // admin UI
@@ -213,6 +275,63 @@ async function openAdmin(){
 }
 const adminOpenBtn = document.getElementById('admin-open'); if(adminOpenBtn) adminOpenBtn.onclick = openAdmin;
 const adminCloseBtn = document.getElementById('admin-close'); if(adminCloseBtn) adminCloseBtn.onclick = ()=>{ const m = document.getElementById('admin-modal'); if(m) m.style.display='none' }
+
+async function loadFriends(){
+  try{
+  const r = await fetch(BASE + '/friends', {credentials: 'include', headers: authHeaders()});
+    if(r.status !== 200) return;
+    const data = await r.json();
+    const ul = document.getElementById('friends-list'); if(!ul) return;
+    ul.innerHTML = '';
+    for(const f of data.friends){
+      const li = document.createElement('li');
+      li.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:gray;margin-right:8px;vertical-align:middle" id="friend-dot-${f.id}"></span> ${f.username} (${f.email}) <button data-id="${f.id}" class="remove-btn">Remove</button> <button data-id="${f.id}" class="ban-btn">Ban</button>`;
+  const btn = li.querySelector('.remove-btn'); btn.onclick = async ()=>{ try{ btn.disabled = true; showStatus('Removing friend...'); console.log('POST /friends/remove', { friend_id: f.id }); const r = await fetch(BASE + '/friends/remove', {method:'POST', credentials: 'include', headers: authHeaders('application/json'), body: JSON.stringify({friend_id: f.id})}); console.log('/friends/remove response', r.status, await r.clone().text()); if(r.status===200) await loadFriends(); else { const body = await r.json().catch(()=>null); showStatus('Failed: ' + JSON.stringify(body)); alert(JSON.stringify(body)); } }catch(e){ alert('failed to remove') } finally{ btn.disabled = false } }
+  const banBtn = li.querySelector('.ban-btn'); banBtn.onclick = async ()=>{ try{ if(!confirm('Ban this user?')) return; banBtn.disabled = true; showStatus('Sending ban...'); console.log('POST /ban', { banned_id: f.id }); const r = await fetch(BASE + '/ban', {method:'POST', credentials: 'include', headers: authHeaders('application/json'), body: JSON.stringify({banned_id: f.id})}); console.log('/ban response', r.status, await r.clone().text()); if(r.status===200) await loadFriends(); else { const body = await r.json().catch(()=>null); showStatus('Failed: ' + JSON.stringify(body)); alert(JSON.stringify(body)); } }catch(e){ alert('failed to ban') } finally{ banBtn.disabled = false } }
+      ul.appendChild(li);
+      // fetch presence for friend and color the dot
+      (async (fid)=>{
+        try{
+          const r2 = await fetch(BASE + '/presence/' + fid);
+          if(r2.status !== 200) return;
+          const d = await r2.json();
+          const dot = document.getElementById('friend-dot-' + fid);
+          if(dot){
+            const s = (d.status || '').toLowerCase();
+            if(s === 'online') dot.style.background = 'green';
+            else if(s === 'afk') dot.style.background = 'orange';
+            else dot.style.background = 'gray';
+          }
+        }catch(e){}
+      })(f.id);
+    }
+  }catch(e){console.warn('failed to load friends', e)}
+}
+
+async function loadIncomingRequests(){
+  try{
+  const r = await fetch(BASE + '/friends/requests', {credentials: 'include', headers: authHeaders()});
+    if(r.status !== 200) return;
+    const data = await r.json();
+    const ul = document.getElementById('incoming-requests'); if(!ul) return;
+    ul.innerHTML = '';
+    for(const rq of data.requests){
+      const li = document.createElement('li');
+      li.textContent = `${rq.username} (${rq.email}) - ${rq.message || ''}`;
+      const accept = document.createElement('button'); accept.textContent = 'Accept';
+  accept.onclick = async ()=>{ try{ accept.disabled = true; showStatus('Accepting...'); console.log('POST /friends/requests/respond', { request_id: rq.id, action: 'accept' }); const r = await fetch(BASE + '/friends/requests/respond', {method:'POST', credentials: 'include', headers: authHeaders('application/json'), body: JSON.stringify({request_id: rq.id, action: 'accept'})}); console.log('/friends/requests/respond response', r.status, await r.clone().text()); if(r.status===200){ await loadIncomingRequests(); await loadFriends(); showStatus('Accepted'); } else { const body = await r.json().catch(()=>null); showStatus('Failed: ' + JSON.stringify(body)); alert(JSON.stringify(body)); } }catch(e){ alert('failed to accept') } finally{ accept.disabled = false } }
+  const reject = document.createElement('button'); reject.textContent = 'Reject';
+  reject.onclick = async ()=>{ try{ reject.disabled = true; showStatus('Rejecting...'); console.log('POST /friends/requests/respond', { request_id: rq.id, action: 'reject' }); const r = await fetch(BASE + '/friends/requests/respond', {method:'POST', credentials: 'include', headers: authHeaders('application/json'), body: JSON.stringify({request_id: rq.id, action: 'reject'})}); console.log('/friends/requests/respond response', r.status, await r.clone().text()); if(r.status===200) await loadIncomingRequests(); else { const body = await r.json().catch(()=>null); showStatus('Failed: ' + JSON.stringify(body)); alert(JSON.stringify(body)); } }catch(e){ alert('failed to reject') } finally{ reject.disabled = false } }
+  const ban = document.createElement('button'); ban.textContent = 'Ban';
+  ban.onclick = async ()=>{ try{ if(!confirm('Ban this user?')) return; ban.disabled = true; showStatus('Sending ban...'); console.log('POST /ban', { banned_id: rq.from_id }); const r = await fetch(BASE + '/ban', {method:'POST', credentials: 'include', headers: authHeaders('application/json'), body: JSON.stringify({banned_id: rq.from_id})}); console.log('/ban response', r.status, await r.clone().text()); if(r.status===200){ await loadIncomingRequests(); await loadFriends(); showStatus('Banned'); } else { const body = await r.json().catch(()=>null); showStatus('Failed: ' + JSON.stringify(body)); alert(JSON.stringify(body)); } }catch(e){ alert('failed to ban') } finally{ ban.disabled = false } }
+      li.appendChild(accept); li.appendChild(reject); li.appendChild(ban);
+      ul.appendChild(li);
+    }
+  }catch(e){ console.warn('failed to load incoming requests', e) }
+}
+
+// ensure incoming requests refresher
+setInterval(()=>{ if(token) loadIncomingRequests() }, 15000);
 
 // show admin button for admins (quick heuristic: fetch sessions and check for is_admin via /sessions is not sufficient; we show button and the server will enforce admin rights)
 function maybeShowAdmin(){
