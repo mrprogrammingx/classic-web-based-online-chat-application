@@ -13,6 +13,9 @@ import time
 import requests
 import socket
 import typing
+import tempfile
+import shutil
+import atexit
 
 
 def _wait_for_port(host, port, timeout=5.0):
@@ -50,6 +53,19 @@ def server():
             # ignore malformed env files
             pass
 
+    # create a temporary uploads dir for the test session so tests don't litter the repo
+    tmp_upload_dir = tempfile.mkdtemp(prefix='test_uploads_')
+    # ensure process and code see this env var before server starts
+    os.environ.setdefault('TEST_UPLOAD_DIR', tmp_upload_dir)
+
+    # ensure cleanup on process exit as well
+    def _cleanup():
+        try:
+            shutil.rmtree(tmp_upload_dir)
+        except Exception:
+            pass
+    atexit.register(_cleanup)
+
     # redirect server stdout/stderr to a logfile so tests can inspect server tracebacks
     logf = open('/tmp/test_uvicorn.log', 'wb')
     # PRESENCE_ONLINE_SECONDS will be set in pytest_configure from pytest.ini (or defaults)
@@ -67,6 +83,11 @@ def server():
         proc.kill()
     try:
         logf.close()
+    except Exception:
+        pass
+    # cleanup the temporary uploads directory created for tests
+    try:
+        shutil.rmtree(tmp_upload_dir)
     except Exception:
         pass
 
