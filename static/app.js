@@ -1,4 +1,17 @@
 document.addEventListener('DOMContentLoaded', ()=>{
+  // Ensure modal/toast root containers exist so pages without explicit markup still get modals/toasts
+  try{
+    if(!document.getElementById('modal-root')){
+      const m = document.createElement('div'); m.id = 'modal-root'; document.body.appendChild(m);
+    }
+    if(!document.getElementById('toast-root')){
+      const t = document.createElement('div'); t.id = 'toast-root'; document.body.appendChild(t);
+    }
+  }catch(e){}
+
+  // minimal i18n (kept small and consistent with main.js)
+  window._STRINGS = window._STRINGS || { en: { ok: 'OK', cancel: 'Cancel', ban: 'Ban', keep: 'Keep', revoke: 'Revoke' } };
+  function t(key, lang='en'){ return (window._STRINGS[lang] && window._STRINGS[lang][key]) || window._STRINGS.en[key] || key; }
   const roomsList = document.getElementById('rooms-list');
   const contactsList = document.getElementById('contacts-list');
   const membersList = document.getElementById('members-list');
@@ -215,12 +228,13 @@ document.addEventListener('DOMContentLoaded', ()=>{
         }catch(e){ console.error('parse response', e); }
         progressWrap.remove();
       };
-      xhr.onerror = function(){ alert('Upload failed'); progressWrap.remove(); };
+  xhr.onerror = function(){ showToast('Upload failed', 'error'); progressWrap.remove(); };
       // on network error: mark placeholder as failed and show retry/cancel
       xhr.addEventListener('error', ()=>{
         if(placeholder){
           placeholder.classList.add('failed');
           status.textContent = 'Failed';
+          showToast('Upload failed', 'error');
         }
       });
       xhr.upload.onprogress = function(ev){ if(ev.lengthComputable){ const pct = Math.round((ev.loaded/ev.total)*100); prog.value = pct; } };
@@ -463,9 +477,181 @@ document.addEventListener('DOMContentLoaded', ()=>{
       location.href = '/static/login.html';
       return;
     }
+    // if logged in, the response contains token and user metadata
+    try{
+      const body = await r.json();
+      const user = body.user;
+      if(user){
+        const ui = document.getElementById('user-info');
+        if(ui){
+          // render avatar initial, name and a dropdown trigger
+          const display = escapeHtml(user.username || user.email || ('user'+user.id));
+          ui.innerHTML = `
+            <div class="user-dropdown">
+              <div class="user-toggle" id="user-toggle" tabindex="0">
+                <span class="avatar">${escapeHtml((user.username||user.email||'U').charAt(0).toUpperCase())}</span>
+                <strong>${display}</strong>
+                ${user.is_admin? '<span class="badge">admin</span>':''}
+              </div>
+              <div class="dropdown-panel" id="user-panel" style="display:none">
+                <h4>Sessions</h4>
+                <ul class="sessions-list" id="sessions-list"><li class="meta">Loading…</li></ul>
+                <div style="margin-top:8px;display:flex;gap:8px;justify-content:space-between">
+                  <button id="btn-logout-inline" type="button">Logout</button>
+                  <button id="btn-refresh-sessions" type="button">Refresh</button>
+                </div>
+              </div>
+            </div>
+          `;
+          // wire toggle and inline logout
+          const toggle = document.getElementById('user-toggle');
+          const panel = document.getElementById('user-panel');
+          const sessionsList = document.getElementById('sessions-list');
+          const refreshBtn = document.getElementById('btn-refresh-sessions');
+          const inlineLogout = document.getElementById('btn-logout-inline');
+          function closePanel(){ if(panel) panel.style.display='none'; }
+          function openPanel(){ if(panel) panel.style.display='block'; loadSessions(); }
+          toggle.addEventListener('click', ()=>{ if(panel.style.display==='block') closePanel(); else openPanel(); });
+          refreshBtn.addEventListener('click', ()=> loadSessions());
+          inlineLogout.addEventListener('click', async ()=>{ try{ await fetch('/logout', {method:'POST', credentials:'include'}); }catch(e){} location.href='/static/login.html'; });
+
+          async function loadSessions(){
+            sessionsList.innerHTML = '<li class="meta">Loading…</li>';
+            try{
+              const data = await fetchJSON('/sessions');
+              if(!data || !data.sessions) return sessionsList.innerHTML = '<li class="meta">No sessions</li>';
+              sessionsList.innerHTML = '';
+              data.sessions.forEach(s => {
+                const li = document.createElement('li');
+                const meta = document.createElement('div'); meta.className='meta'; meta.textContent = `jti: ${s.jti} • last active: ${new Date((s.last_active||s.created_at||0)*1000).toLocaleString()}`;
+                const btn = document.createElement('button'); btn.type='button'; btn.textContent='Revoke';
+                btn.addEventListener('click', async ()=>{
+                  // nicer modal confirmation instead of native confirm
+                  const ok = await showModal({title:'Revoke session', body:'Revoke this session? This will immediately log out that session.', confirmText:'Revoke', cancelText:'Keep'});
+                  if(!ok) return;
+                  try{
+                    btn.disabled = true;
+                    const r = await fetch('/sessions/revoke', {method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({jti: s.jti})});
+                    if(r && r.ok){
+                      li.style.transition = 'opacity 220ms'; li.style.opacity = '0';
+                      setTimeout(()=>{ li.remove(); showToast('Session revoked', 'success'); }, 260);
+                    } else {
+                      btn.disabled = false; showToast('Failed to revoke session', 'error');
+                    }
+                  }catch(e){ console.warn('revoke failed', e); btn.disabled = false; showToast('Failed to revoke session', 'error'); }
+                });
+                li.appendChild(meta); li.appendChild(btn); sessionsList.appendChild(li);
+              });
+            }catch(e){ sessionsList.innerHTML = '<li class="meta">Error loading sessions</li>'; }
+          }
+        }
+      }
+    }catch(e){ console.warn('refresh parse failed', e); }
     // ready: load data
     await loadRooms();
     await loadContacts();
+  }
+
+  // simple escape for username rendering
+  function escapeHtml(str){
+    return String(str).replace(/[&<>"']/g, (s)=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":"&#39;" }[s]));
+  }
+
+  // Modal utility: returns a Promise<boolean>
+  function showModal(opts){
+    // ensure modal root exists (should be created on DOMContentLoaded, but guard here)
+    let root = document.getElementById('modal-root');
+    if(!root){ try{ root = document.createElement('div'); root.id = 'modal-root'; document.body.appendChild(root); }catch(e){} }
+    return new Promise((resolve)=>{
+      root.innerHTML = '';
+      const previouslyFocused = document.activeElement;
+      const backdrop = document.createElement('div'); backdrop.className = 'modal-backdrop';
+      const box = document.createElement('div'); box.className = 'modal-box';
+      const title = document.createElement('h3');
+      const titleId = 'modal-title-' + Math.random().toString(36).slice(2,9);
+      title.id = titleId;
+      title.textContent = opts.title || 'Confirm';
+  const body = document.createElement('div'); body.className = 'modal-body'; body.innerHTML = `${escapeHtml(opts.body || '')}`;
+  const actions = document.createElement('div'); actions.className = 'modal-actions';
+  const cancel = document.createElement('button'); cancel.type='button'; cancel.textContent = opts.cancelText || t('cancel');
+  const confirm = document.createElement('button'); confirm.type='button'; confirm.textContent = opts.confirmText || t('ok'); confirm.className='confirm';
+      actions.appendChild(cancel); actions.appendChild(confirm);
+      box.appendChild(title); box.appendChild(body); box.appendChild(actions);
+      // accessibility
+      box.setAttribute('role', 'dialog');
+      box.setAttribute('aria-modal', 'true');
+      box.setAttribute('aria-labelledby', titleId);
+      backdrop.appendChild(box);
+      root.appendChild(backdrop);
+
+      // focus management / trap
+      const focusable = [confirm, cancel];
+      let focusIndex = 0;
+      function focusFirst(){ focusIndex = 0; focusable[focusIndex].focus(); }
+      function handleKey(e){
+        if(e.key === 'Escape'){
+          e.preventDefault(); cleanup(); resolve(false);
+        } else if(e.key === 'Tab'){
+          // simple two-element trap
+          e.preventDefault();
+          if(e.shiftKey) focusIndex = (focusIndex - 1 + focusable.length) % focusable.length;
+          else focusIndex = (focusIndex + 1) % focusable.length;
+          focusable[focusIndex].focus();
+        }
+      }
+
+      function cleanup(){
+        root.innerHTML = '';
+        document.removeEventListener('keydown', handleKey);
+        try{ if(previouslyFocused && previouslyFocused.focus) previouslyFocused.focus(); }catch(e){}
+      }
+
+      cancel.addEventListener('click', ()=>{ cleanup(); resolve(false); });
+      backdrop.addEventListener('click', (e)=>{ if(e.target === backdrop){ cleanup(); resolve(false); } });
+      confirm.addEventListener('click', ()=>{ cleanup(); resolve(true); });
+
+      // wire key handler and initial focus
+      document.addEventListener('keydown', handleKey);
+      // wait a tick then focus the confirm button for quick confirmation via keyboard
+      setTimeout(()=>{ try{ confirm.focus(); }catch(e){} }, 0);
+    });
+  }
+
+  // Toast utility
+  function showToast(msg, type='success', timeout=3000){
+    let root = document.getElementById('toast-root');
+    if(!root){
+      try{
+        root = document.createElement('div'); root.id = 'toast-root'; document.body.appendChild(root);
+      }catch(e){ console.warn('toast fallback:', msg); return; }
+    }
+    if(!root.querySelector('.toast-container')){
+      const cont = document.createElement('div'); cont.className='toast-container';
+      // accessibility: polite live region for toasts
+      cont.setAttribute('role', 'status');
+      cont.setAttribute('aria-live', 'polite');
+      cont.setAttribute('aria-atomic', 'false');
+      root.appendChild(cont);
+    }
+    const cont = root.querySelector('.toast-container');
+    const t = document.createElement('div'); t.className = 'toast ' + (type==='success'? 'success': (type==='error'? 'error':''));
+    t.textContent = msg;
+    // each toast should be perceived by assistive tech
+    t.setAttribute('role', 'status');
+    cont.appendChild(t);
+    setTimeout(()=>{ t.style.opacity='0'; t.style.transform='translateY(8px)'; setTimeout(()=>t.remove(), 240); }, timeout);
+  }
+
+  // wire logout button
+  const logoutBtn = document.getElementById('btn-logout');
+  if(logoutBtn){
+    logoutBtn.addEventListener('click', async ()=>{
+      try{
+        await fetch('/logout', {method:'POST', credentials:'include'});
+      }catch(e){}
+      // redirect to login page
+      location.href = '/static/login.html';
+    });
   }
 
   bootstrap();
