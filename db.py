@@ -190,6 +190,21 @@ async def init_db():
         );
         ''')
         await db.commit()
+        # create private_message_files table to track attachments for personal dialogs
+        await db.executescript('''
+        CREATE TABLE IF NOT EXISTS private_message_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id INTEGER,
+            from_id INTEGER NOT NULL,
+            to_id INTEGER NOT NULL,
+            path TEXT NOT NULL,
+            created_at INTEGER,
+            FOREIGN KEY(message_id) REFERENCES private_messages(id) ON DELETE CASCADE,
+            FOREIGN KEY(from_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY(to_id) REFERENCES users(id) ON DELETE SET NULL
+        );
+        ''')
+        await db.commit()
         # create room_files table to track uploaded files for rooms
         await db.executescript('''
         CREATE TABLE IF NOT EXISTS room_files (
