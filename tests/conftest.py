@@ -1,5 +1,6 @@
 import sys
 import pathlib
+import os
 
 # ensure project root is on sys.path so tests can import project modules if needed
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -11,6 +12,7 @@ import subprocess
 import time
 import requests
 import socket
+import typing
 
 
 def _wait_for_port(host, port, timeout=5.0):
@@ -24,11 +26,33 @@ def _wait_for_port(host, port, timeout=5.0):
     return False
 
 
+# Tests rely on environment variables for test-only configuration.
+# Set PRESENCE_ONLINE_SECONDS in your shell or CI before running pytest, e.g.:
+# PRESENCE_ONLINE_SECONDS=3 pytest -q
+
+
 @pytest.fixture(scope='session')
 def server():
     """Start the uvicorn server as a background process for tests, tear down at session end."""
+    # load test env file if present so subprocess inherits test-only env vars
+    env_file = ROOT / '.env.test'
+    if env_file.exists():
+        try:
+            with env_file.open('r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    if '=' in line:
+                        k, v = line.split('=', 1)
+                        os.environ.setdefault(k.strip(), v.strip())
+        except Exception:
+            # ignore malformed env files
+            pass
+
     # redirect server stdout/stderr to a logfile so tests can inspect server tracebacks
     logf = open('/tmp/test_uvicorn.log', 'wb')
+    # PRESENCE_ONLINE_SECONDS will be set in pytest_configure from pytest.ini (or defaults)
     # use the same Python interpreter so installed packages (fastapi, passlib, etc.) are available
     proc = subprocess.Popen([sys.executable, '-m', 'uvicorn', 'app:app', '--port', '8000'], stdout=logf, stderr=logf)
     ok = _wait_for_port('127.0.0.1', 8000, timeout=5.0)

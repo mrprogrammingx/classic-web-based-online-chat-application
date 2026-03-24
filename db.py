@@ -304,6 +304,29 @@ async def init_db():
             except Exception:
                 pass
         await db.commit()
+        # add last_read_at to memberships so we can track per-user room read position
+        cur = await db.execute("PRAGMA table_info('memberships')")
+        cols = await cur.fetchall()
+        existing_mem_cols = {c[1] for c in cols}
+        if 'last_read_at' not in existing_mem_cols:
+            try:
+                await db.execute("ALTER TABLE memberships ADD COLUMN last_read_at INTEGER")
+            except Exception:
+                pass
+        await db.commit()
+        # create dialog_reads table to track per-user last read position in dialogs
+        await db.executescript('''
+        CREATE TABLE IF NOT EXISTS dialog_reads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            other_id INTEGER NOT NULL,
+            last_read_at INTEGER,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(other_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(user_id, other_id)
+        );
+        ''')
+        await db.commit()
         # create invitations table for private room invites
         await db.executescript('''
         CREATE TABLE IF NOT EXISTS invitations (

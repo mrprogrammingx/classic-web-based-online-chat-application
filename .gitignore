@@ -136,6 +136,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env.test
 .envrc
 .venv
 env/
@@ -147,6 +148,9 @@ venv.bak/
 
 # Ignore runtime uploaded files directory (tests and server write files here)
 uploads/
+
+# Ignore local update test artifact
+uploads_test/
 
 # Spyder project settings
 .spyderproject

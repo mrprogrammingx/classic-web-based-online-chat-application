@@ -11,6 +11,10 @@ from typing import Optional
 
 router = APIRouter()
 
+# Use TEST_UPLOAD_DIR when running tests (set in .env.test), otherwise default to 'uploads'
+UPLOADS_DIR = os.path.join(os.getcwd(), os.getenv('TEST_UPLOAD_DIR', 'uploads'))
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+
 
 @router.post('/dialogs/{other_id}/messages')
 async def send_dialog_message(other_id: int, request: Request, user=Depends(require_auth)):
@@ -139,6 +143,13 @@ async def dialog_history(other_id: int, user=Depends(require_auth), limit: int =
             if delivered_at:
                 entry['delivered_at'] = delivered_at
             msgs.append(entry)
+        # mark dialog as read for this user: update or insert into dialog_reads
+        try:
+            await db.execute('INSERT OR REPLACE INTO dialog_reads (user_id, other_id, last_read_at) VALUES (?, ?, ?)', (user['id'], other_id, int(time.time())))
+            await db.commit()
+        except Exception:
+            pass
+
         return {'read_only': banned, 'messages': msgs}
 
 
@@ -258,9 +269,15 @@ async def get_dialog_file(other_id: int, file_id: int, user=Depends(require_auth
         b = await cur.fetchone()
         if not (a and b):
             raise HTTPException(status_code=403, detail='not authorized')
-        fpath = path
-        if not os.path.isabs(fpath):
-            fpath = os.path.join('uploads', fpath)
+        # resolve path: prefer UPLOADS_DIR but fall back to legacy 'uploads'
+        if os.path.isabs(path):
+            fpath = path
+        else:
+            fpath = os.path.join(UPLOADS_DIR, path)
+            if not os.path.exists(fpath):
+                legacy = os.path.join(os.getcwd(), 'uploads', path)
+                if os.path.exists(legacy):
+                    fpath = legacy
         if not os.path.exists(fpath):
             raise HTTPException(status_code=404, detail='file not found on disk')
         return FileResponse(fpath)
@@ -282,19 +299,19 @@ async def upload_dialog_file(other_id: int, file: UploadFile = File(...), commen
         b = await cur.fetchone()
         if not (a and b):
             raise HTTPException(status_code=403, detail='users not friends')
-        uploads_dir = os.path.join(os.getcwd(), 'uploads')
+        uploads_dir = UPLOADS_DIR
         os.makedirs(uploads_dir, exist_ok=True)
         safe_name = f"{int(time.time())}_{uuid.uuid4().hex}_{file.filename}"
         dest_path = os.path.join(uploads_dir, safe_name)
         contents = await file.read()
         with open(dest_path, 'wb') as fh:
             fh.write(contents)
-    # insert record; message_id can be null until associated with a message
-    await db.execute('INSERT INTO private_message_files (message_id, from_id, to_id, path, original_filename, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', (None, user['id'], other_id, safe_name, file.filename, comment, int(time.time())))
-    await db.commit()
-    cur = await db.execute('SELECT id, message_id, from_id, to_id, path, original_filename, comment, created_at FROM private_message_files WHERE rowid = last_insert_rowid()')
-    r = await cur.fetchone()
-    return {'file': {'id': r[0], 'message_id': r[1], 'from_id': r[2], 'to_id': r[3], 'path': r[4], 'original_filename': r[5], 'comment': r[6], 'created_at': r[7]}}
+        # insert record; message_id can be null until associated with a message
+        await db.execute('INSERT INTO private_message_files (message_id, from_id, to_id, path, original_filename, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', (None, user['id'], other_id, safe_name, file.filename, comment, int(time.time())))
+        await db.commit()
+        cur = await db.execute('SELECT id, message_id, from_id, to_id, path, original_filename, comment, created_at FROM private_message_files WHERE rowid = last_insert_rowid()')
+        r = await cur.fetchone()
+        return {'file': {'id': r[0], 'message_id': r[1], 'from_id': r[2], 'to_id': r[3], 'path': r[4], 'original_filename': r[5], 'comment': r[6], 'created_at': r[7]}}
 
 
 @router.post('/dialogs/{other_id}/files/paste')
@@ -337,7 +354,7 @@ async def paste_dialog_file(other_id: int, request: Request, user=Depends(requir
         b = await cur.fetchone()
         if not (a and b):
             raise HTTPException(status_code=403, detail='users not friends')
-        uploads_dir = os.path.join(os.getcwd(), 'uploads')
+        uploads_dir = UPLOADS_DIR
         os.makedirs(uploads_dir, exist_ok=True)
         safe_name = f"{int(time.time())}_{uuid.uuid4().hex}_{filename}"
         dest_path = os.path.join(uploads_dir, safe_name)

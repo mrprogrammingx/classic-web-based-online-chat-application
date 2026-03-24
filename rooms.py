@@ -341,6 +341,10 @@ import os
 import uuid
 import time as _time
 
+# Use TEST_UPLOAD_DIR when running tests (set in .env.test), otherwise default to 'uploads'
+UPLOADS_DIR = os.path.join(os.getcwd(), os.getenv('TEST_UPLOAD_DIR', 'uploads'))
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+
 
 @router.get('/rooms/{room_id}/files/{file_id}')
 async def get_room_file(room_id: int, file_id: int, user=Depends(require_auth)):
@@ -364,10 +368,16 @@ async def get_room_file(room_id: int, file_id: int, user=Depends(require_auth)):
             cur = await db.execute('SELECT id FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
             if not await cur.fetchone():
                 raise HTTPException(status_code=403, detail='private room')
-        # resolve path
-        p = path
-        if not os.path.isabs(p):
-            p = os.path.join('uploads', p)
+        # resolve path: prefer UPLOADS_DIR (TEST_UPLOAD_DIR) but fall back to legacy 'uploads' for existing files
+        if os.path.isabs(path):
+            p = path
+        else:
+            p = os.path.join(UPLOADS_DIR, path)
+            if not os.path.exists(p):
+                # fallback to legacy uploads/ location
+                legacy = os.path.join(os.getcwd(), 'uploads', path)
+                if os.path.exists(legacy):
+                    p = legacy
         if not os.path.exists(p):
             raise HTTPException(status_code=404, detail='file not found on disk')
         return FileResponse(p)
@@ -391,8 +401,7 @@ async def upload_room_file(room_id: int, file: UploadFile = File(...), comment: 
             cur = await db.execute('SELECT 1 FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
             if not await cur.fetchone():
                 raise HTTPException(status_code=403, detail='private room')
-        uploads_dir = os.path.join(os.getcwd(), 'uploads')
-        os.makedirs(uploads_dir, exist_ok=True)
+        uploads_dir = UPLOADS_DIR
         safe_name = f"{int(_time.time())}_{uuid.uuid4().hex}_{file.filename}"
         dest_path = os.path.join(uploads_dir, safe_name)
         contents = await file.read()
@@ -444,19 +453,18 @@ async def paste_room_file(room_id: int, request: Request, user=Depends(require_a
             cur = await db.execute('SELECT 1 FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
             if not await cur.fetchone():
                 raise HTTPException(status_code=403, detail='private room')
-        uploads_dir = os.path.join(os.getcwd(), 'uploads')
-        os.makedirs(uploads_dir, exist_ok=True)
+        uploads_dir = UPLOADS_DIR
         safe_name = f"{int(_time.time())}_{uuid.uuid4().hex}_{filename}"
         dest_path = os.path.join(uploads_dir, safe_name)
         with open(dest_path, 'wb') as fh:
             fh.write(raw)
-    # optional comment passed in JSON
-    comment = body.get('comment')
-    await db.execute('INSERT INTO room_files (room_id, path, original_filename, comment, created_at) VALUES (?, ?, ?, ?, ?)', (room_id, safe_name, filename, comment, int(_time.time())))
-    await db.commit()
-    cur = await db.execute('SELECT id, room_id, path, original_filename, comment, created_at FROM room_files WHERE rowid = last_insert_rowid()')
-    r = await cur.fetchone()
-    return {'file': {'id': r[0], 'room_id': r[1], 'path': r[2], 'original_filename': r[3], 'comment': r[4], 'created_at': r[5]}}
+        # optional comment passed in JSON
+        comment = body.get('comment')
+        await db.execute('INSERT INTO room_files (room_id, path, original_filename, comment, created_at) VALUES (?, ?, ?, ?, ?)', (room_id, safe_name, filename, comment, int(_time.time())))
+        await db.commit()
+        cur = await db.execute('SELECT id, room_id, path, original_filename, comment, created_at FROM room_files WHERE rowid = last_insert_rowid()')
+        r = await cur.fetchone()
+        return {'file': {'id': r[0], 'room_id': r[1], 'path': r[2], 'original_filename': r[3], 'comment': r[4], 'created_at': r[5]}}
 
 
 @router.delete('/rooms/{room_id}/messages/{message_id}')
@@ -645,6 +653,7 @@ async def list_room_messages(room_id: int, user=Depends(require_auth), limit: in
             cur = await db.execute('SELECT id FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
             if not await cur.fetchone():
                 raise HTTPException(status_code=403, detail='private room')
+
         cur = await db.execute('SELECT id, user_id, text, reply_to, created_at, edited_at FROM messages WHERE room_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?', (room_id, limit, offset))
         rows = await cur.fetchall()
         msgs = []
@@ -676,6 +685,14 @@ async def list_room_messages(room_id: int, user=Depends(require_auth), limit: in
             if edited_at:
                 entry['edited_at'] = edited_at
             msgs.append(entry)
+
+        # mark as read: update memberships.last_read_at for this user/room to now
+        try:
+            await db.execute('UPDATE memberships SET last_read_at = ? WHERE room_id = ? AND user_id = ?', (int(time.time()), room_id, user['id']))
+            await db.commit()
+        except Exception:
+            pass
+
         return {'messages': msgs}
 
 
