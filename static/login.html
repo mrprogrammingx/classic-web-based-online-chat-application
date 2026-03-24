@@ -3,16 +3,25 @@
 <head>
   <meta charset="utf-8">
   <title>Login</title>
+  <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <h1>Login</h1>
-  <div id="auth-login">
-    <input id="email" placeholder="email" />
-    <input id="password" placeholder="password" type="password" />
-    <button id="login">Login</button>
-    <p>Don't have an account? <a href="/static/register.html">Register</a></p>
+  <div class="login-overlay">
+    <div class="login-box" role="dialog" aria-modal="true">
+      <h3>Login</h3>
+      <form>
+        <input id="email" placeholder="email" />
+        <input id="password" placeholder="password" type="password" />
+        <div style="display:flex;gap:8px;justify-content:space-between;align-items:center">
+          <button id="login" type="button">Login</button>
+          <a href="/static/register.html">Register</a>
+        </div>
+      </form>
+    </div>
   </div>
 
   <script src="/static/main.js"></script>
+  <div id="modal-root" aria-hidden="true"></div>
+  <div id="toast-root" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>

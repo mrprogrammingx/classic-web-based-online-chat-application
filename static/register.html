@@ -3,17 +3,26 @@
 <head>
   <meta charset="utf-8">
   <title>Register</title>
+  <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <h1>Register</h1>
-  <div id="auth-register">
-    <input id="email" placeholder="email" />
-    <input id="username" placeholder="username" />
-    <input id="password" placeholder="password" type="password" />
-    <button id="register">Register</button>
-    <p>Already have an account? <a href="/static/login.html">Login</a></p>
+  <div class="login-overlay">
+    <div class="login-box" role="dialog" aria-modal="true">
+      <h3>Register</h3>
+      <form>
+        <input id="email" placeholder="email" />
+        <input id="username" placeholder="username" />
+        <input id="password" placeholder="password" type="password" />
+        <div style="display:flex;gap:8px;justify-content:space-between;align-items:center">
+          <button id="register" type="button">Register</button>
+          <a href="/static/login.html">Login</a>
+        </div>
+      </form>
+    </div>
   </div>
 
   <script src="/static/main.js"></script>
+  <div id="modal-root" aria-hidden="true"></div>
+  <div id="toast-root" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>
