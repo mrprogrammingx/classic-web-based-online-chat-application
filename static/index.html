@@ -10,8 +10,14 @@
   <header class="topmenu">
     <div class="brand">Chat Demo</div>
     <nav class="topnav">
-      <button id="btn-new-room">New Room</button>
-      <button id="btn-logout">Logout</button>
+      <a href="/static/home.html" class="btn btn-secondary" id="btn-home">Home</a>
+      <div id="user-info" class="user-info" aria-live="polite">
+        <!-- populated by app.js when user is authenticated -->
+      </div>
+      <div class="nav-actions">
+        <button id="btn-new-room">New Room</button>
+        <button id="btn-logout">Logout</button>
+      </div>
     </nav>
   </header>
 
@@ -57,5 +63,7 @@
   <script src="/static/app.js" defer></script>
   <div id="emoji-picker" class="emoji-picker" aria-hidden="true"></div>
   <div id="uploading-indicator" class="uploading-indicator">Uploading...</div>
+  <div id="modal-root" aria-hidden="true"></div>
+  <div id="toast-root" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>
