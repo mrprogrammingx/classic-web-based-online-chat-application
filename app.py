@@ -33,16 +33,16 @@ async def startup():
 async def root():
     return RedirectResponse(url='/static/index.html')
 
-async def require_auth(authorization: str = Header(None), token_cookie: str = Cookie(None)):
-    token = None
+async def require_auth(authorization: str = Header(None), token: str = Cookie(None)):
+    token_val = None
     if authorization:
-        token = authorization.replace('Bearer ', '')
-    elif token_cookie:
-        token = token_cookie
+        token_val = authorization.replace('Bearer ', '')
+    elif token:
+        token_val = token
     if not token:
         raise HTTPException(status_code=401, detail='missing token')
     try:
-        data = verify_token(token)
+        data = verify_token(token_val)
     except Exception:
         raise HTTPException(status_code=401, detail='invalid token')
     # ensure the session (jti) still exists
@@ -66,9 +66,9 @@ async def register(request: Request):
             await db.commit()
         except aiosqlite.IntegrityError:
             raise HTTPException(status_code=409, detail='email or username taken')
-        cur = await db.execute('SELECT id, email, username FROM users WHERE email = ?', (email,))
+        cur = await db.execute('SELECT id, email, username, is_admin FROM users WHERE email = ?', (email,))
         row = await cur.fetchone()
-        user = {'id': row[0], 'email': row[1], 'username': row[2]}
+        user = {'id': row[0], 'email': row[1], 'username': row[2], 'is_admin': bool(row[3])}
     # create session jti and token
     jti = str(uuid.uuid4())
     expires = int(time.time() + 3600*24*30)
@@ -89,11 +89,11 @@ async def login(request: Request):
     if not email or not password:
         raise HTTPException(status_code=400, detail='email and password required')
     async with aiosqlite.connect(DB) as db:
-        cur = await db.execute('SELECT id, email, username, password FROM users WHERE email = ?', (email,))
+        cur = await db.execute('SELECT id, email, username, password, is_admin FROM users WHERE email = ?', (email,))
         row = await cur.fetchone()
         if not row or not verify_pw(password, row[3]):
             raise HTTPException(status_code=401, detail='invalid credentials')
-        user = {'id': row[0], 'email': row[1], 'username': row[2]}
+        user = {'id': row[0], 'email': row[1], 'username': row[2], 'is_admin': bool(row[4])}
     jti = str(uuid.uuid4())
     expires = int(time.time() + 3600*24*30)
     ip = request.client.host if request.client else None
@@ -105,16 +105,16 @@ async def login(request: Request):
     return resp
 
 @app.post('/logout')
-async def logout(authorization: str = Header(None), token_cookie: str = Cookie(None)):
-    token = None
+async def logout(authorization: str = Header(None), token: str = Cookie(None)):
+    token_val = None
     if authorization:
-        token = authorization.replace('Bearer ', '')
-    elif token_cookie:
-        token = token_cookie
-    if not token:
+        token_val = authorization.replace('Bearer ', '')
+    elif token:
+        token_val = token
+    if not token_val:
         raise HTTPException(status_code=401, detail='missing token')
     try:
-        data = verify_token(token)
+        data = verify_token(token_val)
     except Exception:
         raise HTTPException(status_code=401, detail='invalid token')
     jti = data.get('jti')
@@ -130,16 +130,16 @@ app.include_router(presence_router)
 app.include_router(admin_router)
 
 @app.post('/refresh')
-async def refresh(authorization: str = Header(None), token_cookie: str = Cookie(None)):
-    token = None
+async def refresh(authorization: str = Header(None), token: str = Cookie(None)):
+    token_val = None
     if authorization:
-        token = authorization.replace('Bearer ', '')
-    elif token_cookie:
-        token = token_cookie
-    if not token:
+        token_val = authorization.replace('Bearer ', '')
+    elif token:
+        token_val = token
+    if not token_val:
         raise HTTPException(status_code=401, detail='missing token')
     try:
-        data = verify_token(token)
+        data = verify_token(token_val)
     except Exception:
         raise HTTPException(status_code=401, detail='invalid token')
     jti = data.get('jti')
@@ -149,7 +149,13 @@ async def refresh(authorization: str = Header(None), token_cookie: str = Cookie(
     new_expires = int(time.time() + 3600*24*30)
     await update_session_expiry(jti, new_expires)
     new_token = create_token({'id': data['id'], 'email': data['email'], 'username': data['username'], 'jti': jti}, exp_seconds=3600*24*30)
-    resp = JSONResponse({'token': new_token})
+    # also return authoritative user metadata (including is_admin) so clients
+    # that rely on the HttpOnly cookie can bootstrap their UI after a page reload.
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute('SELECT is_admin FROM users WHERE id = ?', (data['id'],))
+        row = await cur.fetchone()
+        is_admin = bool(row[0]) if row else False
+    resp = JSONResponse({'token': new_token, 'user': {'id': data['id'], 'email': data['email'], 'username': data['username'], 'is_admin': is_admin}})
     resp.set_cookie('token', new_token, httponly=True, samesite='lax')
     return resp
 
@@ -248,3 +254,36 @@ async def me(user=Depends(require_auth)):
         if not row:
             raise HTTPException(status_code=404, detail='user not found')
         return {'user': {'id': row[0], 'email': row[1], 'username': row[2], 'is_admin': bool(row[3])}}
+
+
+@app.get('/debug/cookies')
+async def debug_cookies(request: Request):
+    """Return the cookies the server received (for debugging client cookie issues)."""
+    # convert to plain dict for JSON serialization
+    return {'cookies': dict(request.cookies)}
+
+
+@app.get('/debug/inspect')
+async def debug_inspect(request: Request):
+    """Return the Authorization header, cookie token, and decode results (if any).
+
+    Useful to run from the browser with credentials included to see what the server
+    actually received and whether jwt.decode succeeds.
+    """
+    auth = request.headers.get('authorization')
+    cookie_token = request.cookies.get('token')
+    results = {'authorization': auth, 'cookie_token_present': bool(cookie_token)}
+    # try to decode both (if present) and capture errors
+    def try_decode(tkn):
+        try:
+            data = verify_token(tkn)
+            return {'ok': True, 'data': data}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+    if auth:
+        raw = auth.replace('Bearer ', '')
+        results['auth_decode'] = try_decode(raw)
+    if cookie_token:
+        results['cookie_decode'] = try_decode(cookie_token)
+    return results
