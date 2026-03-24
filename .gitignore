@@ -145,6 +145,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# Ignore runtime uploaded files directory (tests and server write files here)
+uploads/
+
 # Spyder project settings
 .spyderproject
 .spyproject
