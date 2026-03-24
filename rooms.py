@@ -323,6 +323,7 @@ async def list_room_files(room_id: int, user=Depends(require_auth)):
         cur = await db.execute('SELECT id FROM room_bans WHERE room_id = ? AND banned_id = ?', (room_id, user['id']))
         if await cur.fetchone():
             raise HTTPException(status_code=403, detail='banned from room')
+        # check membership if private
         if visibility == 'private':
             cur = await db.execute('SELECT id FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
             if not await cur.fetchone():
@@ -334,6 +335,11 @@ async def list_room_files(room_id: int, user=Depends(require_auth)):
 
 
 from fastapi.responses import FileResponse
+from fastapi import UploadFile, File, Form
+from typing import Optional
+import os
+import uuid
+import time as _time
 
 
 @router.get('/rooms/{room_id}/files/{file_id}')
@@ -349,25 +355,108 @@ async def get_room_file(room_id: int, file_id: int, user=Depends(require_auth)):
         cur = await db.execute('SELECT id FROM room_bans WHERE room_id = ? AND banned_id = ?', (room_id, user['id']))
         if await cur.fetchone():
             raise HTTPException(status_code=403, detail='banned from room')
-        # check room visibility/membership
+        # check room visibility and require membership only for private rooms
         cur = await db.execute('SELECT visibility FROM rooms WHERE id = ?', (room_id,))
         r2 = await cur.fetchone()
         if not r2:
             raise HTTPException(status_code=404, detail='room not found')
-        visibility = r2[0]
-        if visibility == 'private':
+        if r2[0] == 'private':
             cur = await db.execute('SELECT id FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
             if not await cur.fetchone():
                 raise HTTPException(status_code=403, detail='private room')
         # resolve path
-        import os
-
         p = path
         if not os.path.isabs(p):
             p = os.path.join('uploads', p)
         if not os.path.exists(p):
             raise HTTPException(status_code=404, detail='file not found on disk')
         return FileResponse(p)
+
+
+
+@router.post('/rooms/{room_id}/files')
+async def upload_room_file(room_id: int, file: UploadFile = File(...), comment: Optional[str] = Form(None), user=Depends(require_auth)):
+    """Upload an attachment to a room (images or arbitrary files)."""
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute('SELECT visibility FROM rooms WHERE id = ?', (room_id,))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='room not found')
+        # check ban
+        cur = await db.execute('SELECT 1 FROM room_bans WHERE room_id = ? AND banned_id = ?', (room_id, user['id']))
+        if await cur.fetchone():
+            raise HTTPException(status_code=403, detail='banned from room')
+        # check membership if private
+        if row[0] == 'private':
+            cur = await db.execute('SELECT 1 FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
+            if not await cur.fetchone():
+                raise HTTPException(status_code=403, detail='private room')
+        uploads_dir = os.path.join(os.getcwd(), 'uploads')
+        os.makedirs(uploads_dir, exist_ok=True)
+        safe_name = f"{int(_time.time())}_{uuid.uuid4().hex}_{file.filename}"
+        dest_path = os.path.join(uploads_dir, safe_name)
+        contents = await file.read()
+        with open(dest_path, 'wb') as fh:
+            fh.write(contents)
+        await db.execute('INSERT INTO room_files (room_id, path, original_filename, comment, created_at) VALUES (?, ?, ?, ?, ?)', (room_id, safe_name, file.filename, comment, int(_time.time())))
+        await db.commit()
+        cur = await db.execute('SELECT id, room_id, path, original_filename, comment, created_at FROM room_files WHERE rowid = last_insert_rowid()')
+        r = await cur.fetchone()
+        return {'file': {'id': r[0], 'room_id': r[1], 'path': r[2], 'original_filename': r[3], 'comment': r[4], 'created_at': r[5]}}
+
+
+@router.post('/rooms/{room_id}/files/paste')
+async def paste_room_file(room_id: int, request: Request, user=Depends(require_auth)):
+    """Accept pasted file data (data URL or raw base64) in JSON and store as a room attachment.
+
+    Body: { filename: str, data: str }
+    """
+    body = await request.json()
+    filename = body.get('filename')
+    data = body.get('data')
+    if not filename or not data:
+        raise HTTPException(status_code=400, detail='filename and data required')
+    if data.startswith('data:'):
+        try:
+            header, b64 = data.split(',', 1)
+        except ValueError:
+            raise HTTPException(status_code=400, detail='invalid data url')
+    else:
+        b64 = data
+    import base64
+
+    try:
+        raw = base64.b64decode(b64)
+    except Exception:
+        raise HTTPException(status_code=400, detail='invalid base64 data')
+
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute('SELECT visibility FROM rooms WHERE id = ?', (room_id,))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='room not found')
+        # check ban
+        cur = await db.execute('SELECT 1 FROM room_bans WHERE room_id = ? AND banned_id = ?', (room_id, user['id']))
+        if await cur.fetchone():
+            raise HTTPException(status_code=403, detail='banned from room')
+        # check membership if private
+        if row[0] == 'private':
+            cur = await db.execute('SELECT 1 FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
+            if not await cur.fetchone():
+                raise HTTPException(status_code=403, detail='private room')
+        uploads_dir = os.path.join(os.getcwd(), 'uploads')
+        os.makedirs(uploads_dir, exist_ok=True)
+        safe_name = f"{int(_time.time())}_{uuid.uuid4().hex}_{filename}"
+        dest_path = os.path.join(uploads_dir, safe_name)
+        with open(dest_path, 'wb') as fh:
+            fh.write(raw)
+    # optional comment passed in JSON
+    comment = body.get('comment')
+    await db.execute('INSERT INTO room_files (room_id, path, original_filename, comment, created_at) VALUES (?, ?, ?, ?, ?)', (room_id, safe_name, filename, comment, int(_time.time())))
+    await db.commit()
+    cur = await db.execute('SELECT id, room_id, path, original_filename, comment, created_at FROM room_files WHERE rowid = last_insert_rowid()')
+    r = await cur.fetchone()
+    return {'file': {'id': r[0], 'room_id': r[1], 'path': r[2], 'original_filename': r[3], 'comment': r[4], 'created_at': r[5]}}
 
 
 @router.delete('/rooms/{room_id}/messages/{message_id}')

@@ -3,6 +3,11 @@ import aiosqlite
 from db import DB
 from utils import require_auth
 import time
+from fastapi import UploadFile, File, Form
+from fastapi.responses import FileResponse
+import os
+import uuid
+from typing import Optional
 
 router = APIRouter()
 
@@ -32,7 +37,7 @@ async def send_dialog_message(other_id: int, request: Request, user=Depends(requ
     return {'message': msg}
 
 
-async def _send_private_message(from_id: int, to_id: int, text: str, reply_to: int | None):
+async def _send_private_message(from_id: int, to_id: int, text: str, reply_to: Optional[int]):
     """Internal helper to send a private message and return the created message dict.
 
     Raises HTTPException for permission/validation errors.
@@ -205,8 +210,143 @@ async def dialog_files(other_id: int, user=Depends(require_auth)):
         cur = await db.execute('SELECT 1 FROM users WHERE id = ?', (other_id,))
         if not await cur.fetchone():
             raise HTTPException(status_code=404, detail='user not found')
+        # ensure access: no bans and mutual friendship
+        cur = await db.execute(
+            'SELECT 1 FROM bans WHERE (banner_id = ? AND banned_id = ?) OR (banner_id = ? AND banned_id = ?)',
+            (user['id'], other_id, other_id, user['id'])
+        )
+        if await cur.fetchone():
+            raise HTTPException(status_code=403, detail='read_only')
+        cur = await db.execute('SELECT 1 FROM friends WHERE user_id = ? AND friend_id = ?', (user['id'], other_id))
+        a = await cur.fetchone()
+        cur = await db.execute('SELECT 1 FROM friends WHERE user_id = ? AND friend_id = ?', (other_id, user['id']))
+        b = await cur.fetchone()
+        if not (a and b):
+            raise HTTPException(status_code=403, detail='not authorized')
         # list files where (from=user and to=other) OR (from=other and to=user)
-        cur = await db.execute('SELECT id, message_id, from_id, to_id, path, created_at FROM private_message_files WHERE (from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?) ORDER BY created_at ASC', (user['id'], other_id, other_id, user['id']))
+        cur = await db.execute('SELECT id, message_id, from_id, to_id, path, original_filename, comment, created_at FROM private_message_files WHERE (from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?) ORDER BY created_at ASC', (user['id'], other_id, other_id, user['id']))
         rows = await cur.fetchall()
-        files = [{'id': r[0], 'message_id': r[1], 'from_id': r[2], 'to_id': r[3], 'path': r[4], 'created_at': r[5]} for r in rows]
+        files = [{'id': r[0], 'message_id': r[1], 'from_id': r[2], 'to_id': r[3], 'path': r[4], 'original_filename': r[5], 'comment': r[6], 'created_at': r[7]} for r in rows]
         return {'files': files}
+
+
+
+@router.get('/dialogs/{other_id}/files/{file_id}')
+async def get_dialog_file(other_id: int, file_id: int, user=Depends(require_auth)):
+    """Serve a file attached to a dialog if the requester is a participant."""
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute('SELECT path, from_id, to_id FROM private_message_files WHERE id = ?', (file_id,))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='file not found')
+        path, from_id, to_id = row
+        # ensure requester is one of the participants
+        if user['id'] not in (from_id, to_id):
+            raise HTTPException(status_code=403, detail='not authorized')
+        # ensure current access: no mutual ban and mutual friendship
+        other = from_id if user['id'] != from_id else to_id
+        cur = await db.execute(
+            'SELECT 1 FROM bans WHERE (banner_id = ? AND banned_id = ?) OR (banner_id = ? AND banned_id = ?)',
+            (user['id'], other, other, user['id'])
+        )
+        if await cur.fetchone():
+            raise HTTPException(status_code=403, detail='not authorized')
+        # mutual friendship check
+        cur = await db.execute('SELECT 1 FROM friends WHERE user_id = ? AND friend_id = ?', (user['id'], other))
+        a = await cur.fetchone()
+        cur = await db.execute('SELECT 1 FROM friends WHERE user_id = ? AND friend_id = ?', (other, user['id']))
+        b = await cur.fetchone()
+        if not (a and b):
+            raise HTTPException(status_code=403, detail='not authorized')
+        fpath = path
+        if not os.path.isabs(fpath):
+            fpath = os.path.join('uploads', fpath)
+        if not os.path.exists(fpath):
+            raise HTTPException(status_code=404, detail='file not found on disk')
+        return FileResponse(fpath)
+
+
+@router.post('/dialogs/{other_id}/files')
+async def upload_dialog_file(other_id: int, file: UploadFile = File(...), comment: Optional[str] = Form(None), user=Depends(require_auth)):
+    """Upload an attachment for a dialog message. Records a private_message_files row. Returns file metadata."""
+    if other_id == user['id']:
+        raise HTTPException(status_code=400, detail="can't attach to yourself")
+    async with aiosqlite.connect(DB) as db:
+        # ban check and friendship check similar to sending messages
+        cur = await db.execute('SELECT 1 FROM bans WHERE (banner_id = ? AND banned_id = ?) OR (banner_id = ? AND banned_id = ?)', (user['id'], other_id, other_id, user['id']))
+        if await cur.fetchone():
+            raise HTTPException(status_code=403, detail='ban exists between users')
+        cur = await db.execute('SELECT 1 FROM friends WHERE user_id = ? AND friend_id = ?', (user['id'], other_id))
+        a = await cur.fetchone()
+        cur = await db.execute('SELECT 1 FROM friends WHERE user_id = ? AND friend_id = ?', (other_id, user['id']))
+        b = await cur.fetchone()
+        if not (a and b):
+            raise HTTPException(status_code=403, detail='users not friends')
+        uploads_dir = os.path.join(os.getcwd(), 'uploads')
+        os.makedirs(uploads_dir, exist_ok=True)
+        safe_name = f"{int(time.time())}_{uuid.uuid4().hex}_{file.filename}"
+        dest_path = os.path.join(uploads_dir, safe_name)
+        contents = await file.read()
+        with open(dest_path, 'wb') as fh:
+            fh.write(contents)
+    # insert record; message_id can be null until associated with a message
+    await db.execute('INSERT INTO private_message_files (message_id, from_id, to_id, path, original_filename, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', (None, user['id'], other_id, safe_name, file.filename, comment, int(time.time())))
+    await db.commit()
+    cur = await db.execute('SELECT id, message_id, from_id, to_id, path, original_filename, comment, created_at FROM private_message_files WHERE rowid = last_insert_rowid()')
+    r = await cur.fetchone()
+    return {'file': {'id': r[0], 'message_id': r[1], 'from_id': r[2], 'to_id': r[3], 'path': r[4], 'original_filename': r[5], 'comment': r[6], 'created_at': r[7]}}
+
+
+@router.post('/dialogs/{other_id}/files/paste')
+async def paste_dialog_file(other_id: int, request: Request, user=Depends(require_auth)):
+    """Accept pasted file data (data URL or raw base64) in JSON and store as a dialog attachment.
+
+    Body: { filename: str, data: str } where data may be a data URL (data:<mimetype>;base64,...) or raw base64.
+    Returns same shape as upload endpoint.
+    """
+    body = await request.json()
+    filename = body.get('filename')
+    data = body.get('data')
+    if not filename or not data:
+        raise HTTPException(status_code=400, detail='filename and data required')
+    # Normalize data URL or raw base64
+    if data.startswith('data:'):
+        try:
+            header, b64 = data.split(',', 1)
+        except ValueError:
+            raise HTTPException(status_code=400, detail='invalid data url')
+    else:
+        b64 = data
+    import base64
+
+    try:
+        raw = base64.b64decode(b64)
+    except Exception:
+        raise HTTPException(status_code=400, detail='invalid base64 data')
+
+    # reuse same permission checks as upload_dialog_file
+    if other_id == user['id']:
+        raise HTTPException(status_code=400, detail="can't attach to yourself")
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute('SELECT 1 FROM bans WHERE (banner_id = ? AND banned_id = ?) OR (banner_id = ? AND banned_id = ?)', (user['id'], other_id, other_id, user['id']))
+        if await cur.fetchone():
+            raise HTTPException(status_code=403, detail='ban exists between users')
+        cur = await db.execute('SELECT 1 FROM friends WHERE user_id = ? AND friend_id = ?', (user['id'], other_id))
+        a = await cur.fetchone()
+        cur = await db.execute('SELECT 1 FROM friends WHERE user_id = ? AND friend_id = ?', (other_id, user['id']))
+        b = await cur.fetchone()
+        if not (a and b):
+            raise HTTPException(status_code=403, detail='users not friends')
+        uploads_dir = os.path.join(os.getcwd(), 'uploads')
+        os.makedirs(uploads_dir, exist_ok=True)
+        safe_name = f"{int(time.time())}_{uuid.uuid4().hex}_{filename}"
+        dest_path = os.path.join(uploads_dir, safe_name)
+        with open(dest_path, 'wb') as fh:
+            fh.write(raw)
+        # optional comment passed in JSON
+        comment = body.get('comment')
+        await db.execute('INSERT INTO private_message_files (message_id, from_id, to_id, path, original_filename, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', (None, user['id'], other_id, safe_name, filename, comment, int(time.time())))
+        await db.commit()
+        cur = await db.execute('SELECT id, message_id, from_id, to_id, path, original_filename, comment, created_at FROM private_message_files WHERE rowid = last_insert_rowid()')
+        r = await cur.fetchone()
+        return {'file': {'id': r[0], 'message_id': r[1], 'from_id': r[2], 'to_id': r[3], 'path': r[4], 'original_filename': r[5], 'comment': r[6], 'created_at': r[7]}}

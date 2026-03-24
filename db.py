@@ -201,6 +201,8 @@ async def init_db():
             from_id INTEGER NOT NULL,
             to_id INTEGER NOT NULL,
             path TEXT NOT NULL,
+            original_filename TEXT,
+            comment TEXT,
             created_at INTEGER,
             FOREIGN KEY(message_id) REFERENCES private_messages(id) ON DELETE CASCADE,
             FOREIGN KEY(from_id) REFERENCES users(id) ON DELETE SET NULL,
@@ -267,10 +269,40 @@ async def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             room_id INTEGER NOT NULL,
             path TEXT NOT NULL,
+            original_filename TEXT,
+            comment TEXT,
             created_at INTEGER,
             FOREIGN KEY(room_id) REFERENCES rooms(id) ON DELETE CASCADE
         );
         ''')
+        await db.commit()
+        # ensure migrations for new columns in existing tables (original_filename, comment)
+        cur = await db.execute("PRAGMA table_info('private_message_files')")
+        cols = await cur.fetchall()
+        existing_pmf = {c[1] for c in cols}
+        if 'original_filename' not in existing_pmf:
+            try:
+                await db.execute("ALTER TABLE private_message_files ADD COLUMN original_filename TEXT")
+            except Exception:
+                pass
+        if 'comment' not in existing_pmf:
+            try:
+                await db.execute("ALTER TABLE private_message_files ADD COLUMN comment TEXT")
+            except Exception:
+                pass
+        cur = await db.execute("PRAGMA table_info('room_files')")
+        cols = await cur.fetchall()
+        existing_rf = {c[1] for c in cols}
+        if 'original_filename' not in existing_rf:
+            try:
+                await db.execute("ALTER TABLE room_files ADD COLUMN original_filename TEXT")
+            except Exception:
+                pass
+        if 'comment' not in existing_rf:
+            try:
+                await db.execute("ALTER TABLE room_files ADD COLUMN comment TEXT")
+            except Exception:
+                pass
         await db.commit()
         # create invitations table for private room invites
         await db.executescript('''
