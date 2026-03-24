@@ -184,6 +184,9 @@ async def init_db():
             from_id INTEGER NOT NULL,
             to_id INTEGER NOT NULL,
             text TEXT,
+            reply_to INTEGER,
+            edited_at INTEGER,
+            delivered_at INTEGER,
             created_at INTEGER,
             FOREIGN KEY(from_id) REFERENCES users(id) ON DELETE SET NULL,
             FOREIGN KEY(to_id) REFERENCES users(id) ON DELETE SET NULL
@@ -205,6 +208,59 @@ async def init_db():
         );
         ''')
         await db.commit()
+        # migrate messages table to add reply_to if missing and create message_files for room message attachments
+        cur = await db.execute("PRAGMA table_info('messages')")
+        cols = await cur.fetchall()
+        existing_msgs_cols = {c[1] for c in cols}
+        if 'reply_to' not in existing_msgs_cols:
+            try:
+                await db.execute("ALTER TABLE messages ADD COLUMN reply_to INTEGER")
+                await db.commit()
+            except Exception:
+                pass
+        # add edited_at column to messages to track edits
+        if 'edited_at' not in existing_msgs_cols:
+            try:
+                await db.execute("ALTER TABLE messages ADD COLUMN edited_at INTEGER")
+                await db.commit()
+            except Exception:
+                pass
+        # create message_files table for room message attachments
+        await db.executescript('''
+        CREATE TABLE IF NOT EXISTS message_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id INTEGER NOT NULL,
+            room_file_id INTEGER NOT NULL,
+            created_at INTEGER,
+            FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE,
+            FOREIGN KEY(room_file_id) REFERENCES room_files(id) ON DELETE CASCADE
+        );
+        ''')
+        await db.commit()
+        # ensure private_messages has reply_to column for replies in dialogs
+        cur = await db.execute("PRAGMA table_info('private_messages')")
+        cols = await cur.fetchall()
+        existing_pm_cols = {c[1] for c in cols}
+        if 'reply_to' not in existing_pm_cols:
+            try:
+                await db.execute("ALTER TABLE private_messages ADD COLUMN reply_to INTEGER")
+                await db.commit()
+            except Exception:
+                pass
+        # add edited_at column to private_messages to track edits
+        if 'edited_at' not in existing_pm_cols:
+            try:
+                await db.execute("ALTER TABLE private_messages ADD COLUMN edited_at INTEGER")
+                await db.commit()
+            except Exception:
+                pass
+        # add delivered_at column to private_messages for delivery tracking
+        if 'delivered_at' not in existing_pm_cols:
+            try:
+                await db.execute("ALTER TABLE private_messages ADD COLUMN delivered_at INTEGER")
+                await db.commit()
+            except Exception:
+                pass
         # create room_files table to track uploaded files for rooms
         await db.executescript('''
         CREATE TABLE IF NOT EXISTS room_files (

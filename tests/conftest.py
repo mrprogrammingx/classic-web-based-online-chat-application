@@ -63,5 +63,8 @@ def client(server):
 
         def get(self, path, **kwargs):
             return self.s.get(self.base + path, **kwargs)
+        
+        def delete(self, path, **kwargs):
+            return self.s.delete(self.base + path, **kwargs)
 
     return C(s)

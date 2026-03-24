@@ -374,13 +374,17 @@ async def get_room_file(room_id: int, file_id: int, user=Depends(require_auth)):
 async def delete_message(room_id: int, message_id: int, user=Depends(require_auth)):
     """Admins/owner may delete messages in a room."""
     async with aiosqlite.connect(DB) as db:
-        checker = _is_owner_or_admin(db, room_id, user['id'])
-        if not await checker():
-            raise HTTPException(status_code=403, detail='not authorized')
-        # ensure message exists and belongs to room
-        cur = await db.execute('SELECT id FROM messages WHERE id = ? AND room_id = ?', (message_id, room_id))
-        if not await cur.fetchone():
+        # allow deletion if requester is the message author or an owner/admin
+        # ensure message exists and belongs to room and fetch author
+        cur = await db.execute('SELECT user_id FROM messages WHERE id = ? AND room_id = ?', (message_id, room_id))
+        row = await cur.fetchone()
+        if not row:
             raise HTTPException(status_code=404, detail='message not found')
+        author_id = row[0]
+        checker = _is_owner_or_admin(db, room_id, user['id'])
+        is_admin = await checker()
+        if author_id != user['id'] and not is_admin:
+            raise HTTPException(status_code=403, detail='not authorized')
         await db.execute('DELETE FROM messages WHERE id = ? AND room_id = ?', (message_id, room_id))
         await db.commit()
         return {'ok': True}
@@ -492,8 +496,16 @@ async def post_room_message(room_id: int, request: Request, user=Depends(require
     """
     body = await request.json()
     text = body.get('text')
-    if not text:
+    reply_to = body.get('reply_to')
+    if text is None:
         raise HTTPException(status_code=400, detail='text required')
+    # enforce UTF-8 size limit: 3 KB
+    try:
+        size = len(text.encode('utf-8'))
+    except Exception:
+        raise HTTPException(status_code=400, detail='invalid text encoding')
+    if size > 3 * 1024:
+        raise HTTPException(status_code=400, detail='text too long (max 3KB)')
     async with aiosqlite.connect(DB) as db:
         cur = await db.execute('SELECT visibility FROM rooms WHERE id = ?', (room_id,))
         row = await cur.fetchone()
@@ -508,19 +520,27 @@ async def post_room_message(room_id: int, request: Request, user=Depends(require
             cur = await db.execute('SELECT id FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
             if not await cur.fetchone():
                 raise HTTPException(status_code=403, detail='private room')
-        await db.execute('INSERT INTO messages (room_id, user_id, text, created_at) VALUES (?, ?, ?, ?)', (room_id, user['id'], text, int(time.time())))
+        # if reply_to provided, ensure it exists and belongs to this room
+        if reply_to:
+            cur = await db.execute('SELECT id FROM messages WHERE id = ? AND room_id = ?', (reply_to, room_id))
+            if not await cur.fetchone():
+                raise HTTPException(status_code=400, detail='invalid reply_to')
+        await db.execute('INSERT INTO messages (room_id, user_id, text, reply_to, created_at) VALUES (?, ?, ?, ?, ?)', (room_id, user['id'], text, reply_to, int(time.time())))
         await db.commit()
-        cur = await db.execute('SELECT id, room_id, user_id, text, created_at FROM messages WHERE rowid = last_insert_rowid()')
+        cur = await db.execute('SELECT id, room_id, user_id, text, reply_to, created_at FROM messages WHERE rowid = last_insert_rowid()')
         r = await cur.fetchone()
         if r:
-            msg = {'id': r[0], 'room_id': r[1], 'user_id': r[2], 'text': r[3], 'created_at': r[4]}
+            # include edited_at if present
+            msg = {'id': r[0], 'room_id': r[1], 'user_id': r[2], 'text': r[3], 'reply_to': r[4], 'created_at': r[5]}
+            if len(r) > 6:
+                msg['edited_at'] = r[6]
         else:
             msg = {'room_id': room_id, 'user_id': user['id'], 'text': text}
         return {'message': msg}
 
 
 @router.get('/rooms/{room_id}/messages')
-async def list_room_messages(room_id: int, user=Depends(require_auth)):
+async def list_room_messages(room_id: int, user=Depends(require_auth), limit: int = 50, offset: int = 0):
     """List messages for a room. Private rooms require membership."""
     async with aiosqlite.connect(DB) as db:
         cur = await db.execute('SELECT visibility FROM rooms WHERE id = ?', (room_id,))
@@ -536,7 +556,66 @@ async def list_room_messages(room_id: int, user=Depends(require_auth)):
             cur = await db.execute('SELECT id FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
             if not await cur.fetchone():
                 raise HTTPException(status_code=403, detail='private room')
-        cur = await db.execute('SELECT user_id, text, created_at FROM messages WHERE room_id = ? ORDER BY created_at ASC', (room_id,))
+        cur = await db.execute('SELECT id, user_id, text, reply_to, created_at, edited_at FROM messages WHERE room_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?', (room_id, limit, offset))
         rows = await cur.fetchall()
-        msgs = [{'user_id': r[0], 'text': r[1], 'created_at': r[2]} for r in rows]
+        msgs = []
+        reply_ids = {r[3] for r in rows if r[3]}
+        # determine if the requester is owner or admin; admins may see previews of messages
+        checker = _is_owner_or_admin(db, room_id, user['id'])
+        is_admin = await checker()
+        # gather banned ids for this room to avoid leaking previews for banned users
+        cur = await db.execute('SELECT banned_id FROM room_bans WHERE room_id = ?', (room_id,))
+        banned_ids = {r[0] for r in await cur.fetchall()}
+
+        reply_map = {}
+        if reply_ids:
+            q = f"SELECT id, user_id, text, created_at FROM messages WHERE id IN ({','.join(['?']*len(reply_ids))})"
+            cur = await db.execute(q, tuple(reply_ids))
+            rrows = await cur.fetchall()
+            # only include reply previews if the referenced message's author is not banned,
+            # or the requester is an admin/owner (admins can see previews for moderation)
+            for r in rrows:
+                mid, muid, mtext, mcreated = r
+                if not is_admin and muid in banned_ids:
+                    # skip including preview to avoid leaking banned user's content
+                    continue
+                reply_map[mid] = {'id': mid, 'user_id': muid, 'text': mtext, 'created_at': mcreated}
+        for r in rows:
+            mid, uid, text, reply_to, created_at, edited_at = r
+            reply_obj = reply_map.get(reply_to)
+            entry = {'id': mid, 'user_id': uid, 'text': text, 'reply_to': reply_to, 'reply': reply_obj, 'created_at': created_at}
+            if edited_at:
+                entry['edited_at'] = edited_at
+            msgs.append(entry)
         return {'messages': msgs}
+
+
+@router.post('/rooms/{room_id}/messages/{message_id}/edit')
+async def edit_room_message(room_id: int, message_id: int, request: Request, user=Depends(require_auth)):
+    """Allow the message author to edit their message. Body: { text }
+    Returns the updated message.
+    """
+    body = await request.json()
+    text = body.get('text')
+    if text is None:
+        raise HTTPException(status_code=400, detail='text required')
+    try:
+        size = len(text.encode('utf-8'))
+    except Exception:
+        raise HTTPException(status_code=400, detail='invalid text encoding')
+    if size > 3 * 1024:
+        raise HTTPException(status_code=400, detail='text too long (max 3KB)')
+    async with aiosqlite.connect(DB) as db:
+        # ensure message exists and belongs to room
+        cur = await db.execute('SELECT user_id FROM messages WHERE id = ? AND room_id = ?', (message_id, room_id))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='message not found')
+        if row[0] != user['id']:
+            raise HTTPException(status_code=403, detail='not message author')
+        await db.execute('UPDATE messages SET text = ?, edited_at = ? WHERE id = ? AND room_id = ?', (text, int(time.time()), message_id, room_id))
+        await db.commit()
+        cur = await db.execute('SELECT id, room_id, user_id, text, reply_to, created_at, edited_at FROM messages WHERE id = ? AND room_id = ?', (message_id, room_id))
+        r = await cur.fetchone()
+        msg = {'id': r[0], 'room_id': r[1], 'user_id': r[2], 'text': r[3], 'reply_to': r[4], 'created_at': r[5], 'edited_at': r[6]}
+        return {'message': msg}
