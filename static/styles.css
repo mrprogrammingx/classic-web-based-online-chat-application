@@ -72,4 +72,71 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 .login-box h3{margin:0 0 12px}
 .login-box form{display:flex;flex-direction:column}
 .login-box input{padding:10px;margin-bottom:8px;border:1px solid #e6e9ef;border-radius:6px}
-.login-box button{padding:10px;background:var(--accent);color:#fff;border-radius:6px;border:none}
+.login-box{width:360px;max-width:92vw;padding:24px}
+.login-box input{padding:12px;margin-bottom:12px}
+.login-box .actions-row{display:flex;gap:8px;justify-content:space-between;align-items:center}
+.login-box .actions-row a{color:var(--accent);text-decoration:none;font-size:13px}
+.login-box button{padding:10px 14px;background:var(--accent);color:#fff;border-radius:8px;border:none;cursor:pointer}
+.login-box button:hover{filter:brightness(0.98)}
+
+/* generic button utilities used across pages */
+.btn{padding:8px 12px;border-radius:8px;border:1px solid transparent;background:#fff;color:#0f1724;cursor:pointer;font-size:14px}
+.btn:hover{filter:brightness(0.98)}
+.btn-primary{background:var(--accent);color:#fff;border:none;box-shadow:0 6px 18px rgba(43,144,255,0.12)}
+.btn-secondary{background:#fff;border:1px solid #e6eef9}
+.btn-danger{background:#ff4d4f;color:#fff;border:none}
+.btn.small{padding:6px 8px;font-size:13px}
+.hidden{display:none!important}
+
+/* small presence dot for home page */
+.presence-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;vertical-align:middle;background:gray}
+.presence-dot.online{background:#2ecc71}
+.presence-dot.offline{background:#ced4da}
+
+/* Admin modal and small layout utilities for home.html */
+.admin-modal{position:fixed;left:20%;top:20%;width:60%;background:#fff;border:1px solid #ccc;padding:10px;z-index:70}
+.status-box{padding:8px;margin:8px 0;color:#222;background:#f3f3f3;border:1px solid #ddd}
+.mb-8{margin-bottom:8px}
+.mt-8{margin-top:8px}
+
+/* user-info in header */
+.user-info{display:inline-flex;align-items:center;gap:10px;margin-right:16px}
+.user-info strong{font-weight:600;color:#0f1724}
+.user-info .avatar{width:32px;height:32px;border-radius:50%;background:#e6f0ff;display:inline-flex;align-items:center;justify-content:center;color:var(--accent);font-size:14px;font-weight:600}
+.user-info .badge{background:#eef3ff;color:var(--accent);padding:4px 8px;border-radius:10px;font-size:12px;margin-left:8px;border:1px solid rgba(43,144,255,0.08)}
+.user-dropdown{position:relative}
+.user-dropdown .dropdown-panel{position:absolute;right:0;top:calc(100% + 8px);background:#fff;border:1px solid #eef2f7;padding:12px;border-radius:10px;box-shadow:0 12px 40px rgba(15,23,36,0.08);min-width:260px;z-index:60}
+.user-dropdown .dropdown-panel h4{margin:0 0 8px;font-size:13px;color:#3b4958}
+.user-dropdown .sessions-list{max-height:220px;overflow:auto;margin:0;padding:0;list-style:none;border-top:1px solid #f3f6fb;padding-top:8px}
+.user-dropdown .sessions-list li{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:8px}
+.user-dropdown .sessions-list li + li{margin-top:6px}
+.user-dropdown .sessions-list li .meta{font-size:12px;color:var(--muted);margin-right:8px}
+.user-dropdown .sessions-list li button{padding:6px 10px;border-radius:8px;border:1px solid transparent;background:#fff;color:#d33;font-size:12px;cursor:pointer}
+.user-dropdown .sessions-list li button:hover{background:#fff6f6}
+.user-dropdown .sessions-list li button[disabled]{opacity:0.6;cursor:default}
+.user-dropdown .dropdown-panel .controls{display:flex;gap:8px;justify-content:space-between;margin-top:8px}
+.user-dropdown .dropdown-panel button{padding:8px 10px;border-radius:8px;border:1px solid #e6eef9;background:#fff;color:#0f1724}
+
+/* modal */
+.modal-backdrop{position:fixed;inset:0;background:rgba(15,23,36,0.45);display:flex;align-items:center;justify-content:center;z-index:9999}
+.modal-box{background:#fff;padding:18px;border-radius:10px;max-width:420px;width:100%;box-shadow:0 12px 40px rgba(15,23,36,0.12)}
+.modal-box{transform:translateY(8px);opacity:0;animation:modal-in 220ms forwards}
+.modal-box h3{margin:0 0 8px;font-size:18px;color:#0f1724}
+.modal-body{color:#213547;font-size:15px;line-height:1.45;margin-top:8px}
+.modal-box p{margin:0}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+.modal-actions button{padding:8px 12px;border-radius:8px;border:1px solid #e6eef9;background:#fff}
+.modal-actions .confirm{background:var(--accent);color:#fff;border:none;box-shadow:0 10px 28px rgba(43,144,255,0.14)}
+.modal-actions .confirm:focus, .modal-actions button:focus{outline:3px solid rgba(43,144,255,0.18);outline-offset:2px}
+
+@keyframes modal-in{to{opacity:1;transform:none}}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+.modal-actions button{padding:8px 12px;border-radius:8px;border:1px solid #e6eef9;background:#fff}
+.modal-actions .confirm{background:var(--accent);color:#fff;border:none}
+
+/* toasts */
+.toast-container{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:10000}
+.toast{background:#0f1724;color:#fff;padding:10px 14px;border-radius:8px;box-shadow:0 6px 18px rgba(2,6,23,0.2);opacity:0;transform:translateY(8px);animation:toast-in 280ms forwards}
+.toast.success{background:#2ecc71}
+.toast.error{background:#d33}
+@keyframes toast-in{to{opacity:1;transform:translateY(0)}}
