@@ -57,6 +57,9 @@ def server():
     tmp_upload_dir = tempfile.mkdtemp(prefix='test_uploads_')
     # ensure process and code see this env var before server starts
     os.environ.setdefault('TEST_UPLOAD_DIR', tmp_upload_dir)
+    # ensure presence timeout is small and deterministic in tests (seconds)
+    # presence tests expect a small value (they sleep for ~4s) — force it to 3s
+    os.environ['PRESENCE_ONLINE_SECONDS'] = '3'
 
     # ensure cleanup on process exit as well
     def _cleanup():
