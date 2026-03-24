@@ -94,3 +94,41 @@ rm -f auth.db
 - Tests: use the `tests/conftest.py` fixture which starts uvicorn as a subprocess under the invoking Python.
 
 If you'd like, I can add a CI workflow (GitHub Actions), improve search (case-insensitive or SQLite FTS), or add a member listing endpoint with user details.
+
+## Playwright (browser) E2E tests
+
+Quick notes for running the Playwright end-to-end tests that exercise the real UI (the project contains a Playwright spec at `tests/playwright/reply_preview.spec.js` and a small helper at `tests/playwright/helpers.js`).
+
+- Prerequisites: Node.js + npm (for Playwright), and the project Python virtualenv (see Quick start above).
+- Install JS dependencies:
+
+```bash
+npm ci
+# or: npm install
+```
+
+- Install Playwright browsers (required once per machine):
+
+```bash
+npx playwright install
+```
+
+- Start the server locally in a separate terminal (the tests expect the app at http://127.0.0.1:8000):
+
+```bash
+.venv/bin/uvicorn app:app --reload --port 8000
+```
+
+- Run the single Playwright spec:
+
+```bash
+npx playwright test tests/playwright/reply_preview.spec.js
+# or via npm script if present: npm run test:playwright
+```
+
+Notes:
+- The Playwright spec uses the API to register users and sets the server-issued HttpOnly `token` cookie directly in the browser context to avoid interactive login. That helper is in `tests/playwright/helpers.js`.
+- The CI workflow at `.github/workflows/playwright.yml` in this repo runs the same spec on pushes/PRs. The workflow starts a uvicorn server in the background before running Playwright.
+- If tests fail because the server isn't ready, wait for `http://127.0.0.1:8000` to respond or increase the startup sleep/probe in CI.
+
+If you'd like, I can add Playwright fixtures (for shared setup/teardown), collect traces/screenshots on failure, and upload those artifacts from CI for easier debugging.
