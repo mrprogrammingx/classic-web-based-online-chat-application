@@ -99,6 +99,10 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 .mb-8{margin-bottom:8px}
 .mt-8{margin-top:8px}
 
+/* unread notification badge used near room/contact names */
+.unread-badge{background:#d33;color:#fff;padding:2px 6px;border-radius:999px;font-size:12px;margin-left:8px;min-width:20px;text-align:center;display:inline-block}
+.unread-badge.hidden{display:none}
+
 /* user-info in header */
 .user-info{display:inline-flex;align-items:center;gap:10px;margin-right:16px}
 .user-info strong{font-weight:600;color:#0f1724}
