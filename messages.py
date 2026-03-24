@@ -38,6 +38,13 @@ async def send_dialog_message(other_id: int, request: Request, user=Depends(requ
         raise HTTPException(status_code=400, detail="can't message yourself")
 
     msg = await _send_private_message(user['id'], other_id, text, reply_to)
+    # attach a reply preview if applicable
+    if msg.get('reply_to'):
+        async with aiosqlite.connect(DB) as db:
+            cur = await db.execute('SELECT id, from_id, to_id, text, created_at FROM private_messages WHERE id = ?', (msg['reply_to'],))
+            r = await cur.fetchone()
+            if r:
+                msg['reply'] = {'id': r[0], 'from_id': r[1], 'to_id': r[2], 'text': r[3], 'created_at': r[4]}
     return {'message': msg}
 
 
@@ -97,7 +104,7 @@ async def send_message_compat(request: Request, user=Depends(require_auth)):
 
 
 @router.get('/dialogs/{other_id}/messages')
-async def dialog_history(other_id: int, user=Depends(require_auth), limit: int = 50, offset: int = 0):
+async def dialog_history(other_id: int, user=Depends(require_auth), limit: int = 50, offset: int = 0, before: int = None):
     """Return dialog (personal) message history between authenticated user and other_id.
 
     Response: { read_only: bool, messages: [ { user_id, text, created_at } ] }
@@ -110,11 +117,20 @@ async def dialog_history(other_id: int, user=Depends(require_auth), limit: int =
         )
         banned = bool(await cur.fetchone())
         # fetch messages and normalize shape to match room messages
-        cur = await db.execute(
-            'SELECT id, from_id, to_id, text, reply_to, created_at, edited_at, delivered_at FROM private_messages WHERE (from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?) ORDER BY created_at ASC LIMIT ? OFFSET ?',
-            (user['id'], other_id, other_id, user['id'], limit, offset)
-        )
-        rows = await cur.fetchall()
+        if before is None:
+            cur = await db.execute(
+                'SELECT id, from_id, to_id, text, reply_to, created_at, edited_at, delivered_at FROM private_messages WHERE (from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?) ORDER BY created_at ASC LIMIT ? OFFSET ?',
+                (user['id'], other_id, other_id, user['id'], limit, offset)
+            )
+            rows = await cur.fetchall()
+        else:
+            cur = await db.execute(
+                'SELECT id, from_id, to_id, text, reply_to, created_at, edited_at, delivered_at FROM private_messages WHERE ((from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?)) AND created_at < ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+                (user['id'], other_id, other_id, user['id'], before, limit, offset)
+            )
+            rows_desc = await cur.fetchall()
+            # normalize to ascending order
+            rows = list(reversed(rows_desc))
         msgs = []
         reply_ids = {r[4] for r in rows if r[4]}
         reply_map = {}
@@ -143,6 +159,21 @@ async def dialog_history(other_id: int, user=Depends(require_auth), limit: int =
             if delivered_at:
                 entry['delivered_at'] = delivered_at
             msgs.append(entry)
+        # Attach files to messages: query private_message_files where message_id in message ids
+        msg_ids = [m['id'] for m in msgs]
+        if msg_ids:
+            q = f"SELECT id, message_id, from_id, to_id, path, original_filename, comment, created_at FROM private_message_files WHERE message_id IN ({','.join(['?']*len(msg_ids))})"
+            cur = await db.execute(q, tuple(msg_ids))
+            frows = await cur.fetchall()
+            files_by_msg = {}
+            for fr in frows:
+                fid, mid_ref, fr_from, fr_to, fpath, forig, fcomm, fcreated = fr
+                url = f"/dialogs/{other_id}/files/{fid}"
+                meta = {'id': fid, 'message_id': mid_ref, 'from_id': fr_from, 'to_id': fr_to, 'path': fpath, 'original_filename': forig, 'comment': fcomm, 'created_at': fcreated, 'url': url}
+                files_by_msg.setdefault(mid_ref, []).append(meta)
+            for m in msgs:
+                if m['id'] in files_by_msg:
+                    m['files'] = files_by_msg[m['id']]
         # mark dialog as read for this user: update or insert into dialog_reads
         try:
             await db.execute('INSERT OR REPLACE INTO dialog_reads (user_id, other_id, last_read_at) VALUES (?, ?, ?)', (user['id'], other_id, int(time.time())))
@@ -284,7 +315,7 @@ async def get_dialog_file(other_id: int, file_id: int, user=Depends(require_auth
 
 
 @router.post('/dialogs/{other_id}/files')
-async def upload_dialog_file(other_id: int, file: UploadFile = File(...), comment: Optional[str] = Form(None), user=Depends(require_auth)):
+async def upload_dialog_file(other_id: int, file: UploadFile = File(...), comment: Optional[str] = Form(None), message_id: Optional[int] = Form(None), user=Depends(require_auth)):
     """Upload an attachment for a dialog message. Records a private_message_files row. Returns file metadata."""
     if other_id == user['id']:
         raise HTTPException(status_code=400, detail="can't attach to yourself")
@@ -307,11 +338,58 @@ async def upload_dialog_file(other_id: int, file: UploadFile = File(...), commen
         with open(dest_path, 'wb') as fh:
             fh.write(contents)
         # insert record; message_id can be null until associated with a message
-        await db.execute('INSERT INTO private_message_files (message_id, from_id, to_id, path, original_filename, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', (None, user['id'], other_id, safe_name, file.filename, comment, int(time.time())))
+        await db.execute('INSERT INTO private_message_files (message_id, from_id, to_id, path, original_filename, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', (message_id, user['id'], other_id, safe_name, file.filename, comment, int(time.time())))
         await db.commit()
         cur = await db.execute('SELECT id, message_id, from_id, to_id, path, original_filename, comment, created_at FROM private_message_files WHERE rowid = last_insert_rowid()')
         r = await cur.fetchone()
-        return {'file': {'id': r[0], 'message_id': r[1], 'from_id': r[2], 'to_id': r[3], 'path': r[4], 'original_filename': r[5], 'comment': r[6], 'created_at': r[7]}}
+        fid = r[0]
+        return {'file': {'id': fid, 'message_id': r[1], 'from_id': r[2], 'to_id': r[3], 'path': r[4], 'original_filename': r[5], 'comment': r[6], 'created_at': r[7], 'url': f"/dialogs/{other_id}/files/{fid}"}}
+
+
+@router.post('/dialogs/{other_id}/messages_with_file')
+async def send_dialog_message_with_file(other_id: int, file: UploadFile = File(None), text: Optional[str] = Form(None), reply_to: Optional[int] = Form(None), comment: Optional[str] = Form(None), user=Depends(require_auth)):
+    """Atomic endpoint to create a dialog message and attach a file in one request.
+
+    Accepts multipart/form-data with optional `text`, optional `file`, optional `reply_to` and optional `comment`.
+    Returns { message: {...}, file?: { ... } }
+    """
+    if other_id == user['id']:
+        raise HTTPException(status_code=400, detail="can't message yourself")
+    # enforce text size limit (same rule as send_dialog_message)
+    if text is not None:
+        try:
+            size = len(text.encode('utf-8'))
+        except Exception:
+            raise HTTPException(status_code=400, detail='invalid text encoding')
+        if size > 3 * 1024:
+            raise HTTPException(status_code=400, detail='text too long (max 3KB)')
+    # create message first (validations reused)
+    msg = await _send_private_message(user['id'], other_id, text or '', reply_to)
+    # attach reply preview if applicable
+    if msg.get('reply_to'):
+        async with aiosqlite.connect(DB) as db:
+            cur = await db.execute('SELECT id, from_id, to_id, text, created_at FROM private_messages WHERE id = ?', (msg['reply_to'],))
+            r = await cur.fetchone()
+            if r:
+                msg['reply'] = {'id': r[0], 'from_id': r[1], 'to_id': r[2], 'text': r[3], 'created_at': r[4]}
+    file_meta = None
+    if file:
+        # reuse upload logic but associate with message id
+        uploads_dir = UPLOADS_DIR
+        os.makedirs(uploads_dir, exist_ok=True)
+        safe_name = f"{int(time.time())}_{uuid.uuid4().hex}_{file.filename}"
+        dest_path = os.path.join(uploads_dir, safe_name)
+        contents = await file.read()
+        with open(dest_path, 'wb') as fh:
+            fh.write(contents)
+        async with aiosqlite.connect(DB) as db:
+            await db.execute('INSERT INTO private_message_files (message_id, from_id, to_id, path, original_filename, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', (msg['id'], user['id'], other_id, safe_name, file.filename, comment, int(time.time())))
+            await db.commit()
+            cur = await db.execute('SELECT id, message_id, from_id, to_id, path, original_filename, comment, created_at FROM private_message_files WHERE rowid = last_insert_rowid()')
+            r = await cur.fetchone()
+            fid = r[0]
+            file_meta = {'id': fid, 'message_id': r[1], 'from_id': r[2], 'to_id': r[3], 'path': r[4], 'original_filename': r[5], 'comment': r[6], 'created_at': r[7], 'url': f"/dialogs/{other_id}/files/{fid}"}
+    return {'message': msg, 'file': file_meta}
 
 
 @router.post('/dialogs/{other_id}/files/paste')
@@ -362,8 +440,10 @@ async def paste_dialog_file(other_id: int, request: Request, user=Depends(requir
             fh.write(raw)
         # optional comment passed in JSON
         comment = body.get('comment')
-        await db.execute('INSERT INTO private_message_files (message_id, from_id, to_id, path, original_filename, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', (None, user['id'], other_id, safe_name, filename, comment, int(time.time())))
+        message_id = body.get('message_id')
+        await db.execute('INSERT INTO private_message_files (message_id, from_id, to_id, path, original_filename, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', (message_id, user['id'], other_id, safe_name, filename, comment, int(time.time())))
         await db.commit()
         cur = await db.execute('SELECT id, message_id, from_id, to_id, path, original_filename, comment, created_at FROM private_message_files WHERE rowid = last_insert_rowid()')
         r = await cur.fetchone()
-        return {'file': {'id': r[0], 'message_id': r[1], 'from_id': r[2], 'to_id': r[3], 'path': r[4], 'original_filename': r[5], 'comment': r[6], 'created_at': r[7]}}
+        fid = r[0]
+        return {'file': {'id': fid, 'message_id': r[1], 'from_id': r[2], 'to_id': r[3], 'path': r[4], 'original_filename': r[5], 'comment': r[6], 'created_at': r[7], 'url': f"/dialogs/{other_id}/files/{fid}"}}

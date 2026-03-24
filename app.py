@@ -138,6 +138,8 @@ app.include_router(friends_router)
 app.include_router(messages_router)
 app.include_router(rooms_router)
 app.include_router(notifications_router)
+from users import router as users_router
+app.include_router(users_router)
 
 @app.post('/refresh')
 async def refresh(authorization: str = Header(None), token: str = Cookie(None)):

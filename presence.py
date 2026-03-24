@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, Depends, HTTPException
-from utils import require_auth, touch_tab, remove_tab, get_presence_status, list_sessions_for_user, remove_session_by_jti
+from utils import require_auth, touch_tab, remove_tab, get_presence_status, get_presence_statuses, list_sessions_for_user, remove_session_by_jti
 
 router = APIRouter()
 
@@ -31,6 +31,25 @@ async def close_tab(request: Request, user=Depends(require_auth)):
 @router.get('/presence/{user_id}')
 async def presence_status(user_id: int):
     return {'status': await get_presence_status(user_id)}
+
+
+@router.get('/presence')
+async def presence_batch(ids: str = None):
+    """Batch presence lookup. Query param `ids` is a comma-separated list of user ids.
+
+    Returns: { statuses: { '<id>': 'online'|'AFK'|'offline', ... } }
+    """
+    if not ids:
+        return {'statuses': {}}
+    parts = [p.strip() for p in ids.split(',') if p.strip()]
+    uids = []
+    for p in parts:
+        try:
+            uids.append(int(p))
+        except Exception:
+            continue
+    statuses = await get_presence_statuses(uids)
+    return {'statuses': statuses}
 
 
 @router.get('/sessions')

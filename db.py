@@ -210,6 +210,12 @@ async def init_db():
         );
         ''')
         await db.commit()
+        # ensure index for presence queries (user_id + last_active) for fast aggregation
+        try:
+            await db.execute('CREATE INDEX IF NOT EXISTS idx_tab_presence_user_last_active ON tab_presence(user_id, last_active)')
+            await db.commit()
+        except Exception:
+            pass
         # migrate messages table to add reply_to if missing and create message_files for room message attachments
         cur = await db.execute("PRAGMA table_info('messages')")
         cols = await cur.fetchall()

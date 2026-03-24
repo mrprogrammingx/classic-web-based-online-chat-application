@@ -125,3 +125,36 @@ async def get_presence_status(user_id: int):
         if active > 0:
             return 'online'
         return 'AFK'
+
+
+async def get_presence_statuses(user_ids: list):
+    """Return a dict mapping user_id -> status computed in a single query for efficiency.
+
+    Status rules: total==0 -> offline, active>0 -> online, else AFK
+    """
+    if not user_ids:
+        return {}
+    cutoff = int(time.time()) - PRESENCE_ONLINE_SECONDS
+    placeholders = ','.join(['?'] * len(user_ids))
+    # use MAX(last_active) to determine if any tab is recent, and COUNT(*) for existence
+    sql = f"SELECT user_id, COUNT(*) as total, MAX(last_active) as last_active_max FROM tab_presence WHERE user_id IN ({placeholders}) GROUP BY user_id"
+    params = list(user_ids)
+    out = {}
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute(sql, tuple(params))
+        rows = await cur.fetchall()
+        found = set()
+        for r in rows:
+            uid, total, last_active_max = r[0], r[1], r[2]
+            found.add(uid)
+            if total == 0:
+                out[str(uid)] = 'offline'
+            elif last_active_max and int(last_active_max) > cutoff:
+                out[str(uid)] = 'online'
+            else:
+                out[str(uid)] = 'AFK'
+        # any ids not present in rows are offline
+        for uid in user_ids:
+            if uid not in found:
+                out[str(uid)] = 'offline'
+    return out

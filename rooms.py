@@ -467,6 +467,69 @@ async def paste_room_file(room_id: int, request: Request, user=Depends(require_a
         return {'file': {'id': r[0], 'room_id': r[1], 'path': r[2], 'original_filename': r[3], 'comment': r[4], 'created_at': r[5]}}
 
 
+@router.post('/rooms/{room_id}/messages_with_file')
+async def post_room_message_with_file(room_id: int, file: UploadFile = File(None), text: Optional[str] = Form(None), reply_to: Optional[int] = Form(None), comment: Optional[str] = Form(None), user=Depends(require_auth)):
+    """Atomic endpoint to create a room message and optionally attach a file in one request."""
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute('SELECT visibility FROM rooms WHERE id = ?', (room_id,))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='room not found')
+        visibility = row[0]
+        # check ban
+        cur = await db.execute('SELECT id FROM room_bans WHERE room_id = ? AND banned_id = ?', (room_id, user['id']))
+        if await cur.fetchone():
+            raise HTTPException(status_code=403, detail='banned from room')
+        if visibility == 'private':
+            cur = await db.execute('SELECT id FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
+            if not await cur.fetchone():
+                raise HTTPException(status_code=403, detail='private room')
+        # enforce text size limit (same rule as post_room_message)
+        if text is not None:
+            try:
+                size = len(text.encode('utf-8'))
+            except Exception:
+                raise HTTPException(status_code=400, detail='invalid text encoding')
+            if size > 3 * 1024:
+                raise HTTPException(status_code=400, detail='text too long (max 3KB)')
+        # validate reply_to if provided
+        if reply_to:
+            cur = await db.execute('SELECT id FROM messages WHERE id = ? AND room_id = ?', (reply_to, room_id))
+            if not await cur.fetchone():
+                raise HTTPException(status_code=400, detail='invalid reply_to')
+        # insert message
+        await db.execute('INSERT INTO messages (room_id, user_id, text, reply_to, created_at) VALUES (?, ?, ?, ?, ?)', (room_id, user['id'], text or '', reply_to, int(_time.time())))
+        await db.commit()
+        cur = await db.execute('SELECT id, room_id, user_id, text, reply_to, created_at FROM messages WHERE rowid = last_insert_rowid()')
+        rmsg = await cur.fetchone()
+        msg = {'id': rmsg[0], 'room_id': rmsg[1], 'user_id': rmsg[2], 'text': rmsg[3], 'reply_to': rmsg[4], 'created_at': rmsg[5]}
+        # attach reply preview if reply_to is present
+        if msg.get('reply_to'):
+            cur = await db.execute('SELECT id, user_id, text, created_at FROM messages WHERE id = ? AND room_id = ?', (msg['reply_to'], room_id))
+            rr = await cur.fetchone()
+            if rr:
+                msg['reply'] = {'id': rr[0], 'user_id': rr[1], 'text': rr[2], 'created_at': rr[3]}
+        file_meta = None
+        if file:
+            uploads_dir = UPLOADS_DIR
+            os.makedirs(uploads_dir, exist_ok=True)
+            safe_name = f"{int(_time.time())}_{uuid.uuid4().hex}_{file.filename}"
+            dest_path = os.path.join(uploads_dir, safe_name)
+            contents = await file.read()
+            with open(dest_path, 'wb') as fh:
+                fh.write(contents)
+            # insert into room_files and message_files
+            await db.execute('INSERT INTO room_files (room_id, path, original_filename, comment, created_at) VALUES (?, ?, ?, ?, ?)', (room_id, safe_name, file.filename, comment, int(_time.time())))
+            await db.commit()
+            cur = await db.execute('SELECT id, room_id, path, original_filename, comment, created_at FROM room_files WHERE rowid = last_insert_rowid()')
+            r = await cur.fetchone()
+            room_file_id = r[0]
+            await db.execute('INSERT INTO message_files (message_id, room_file_id, created_at) VALUES (?, ?, ?)', (msg['id'], room_file_id, int(_time.time())))
+            await db.commit()
+            file_meta = {'id': room_file_id, 'room_id': r[1], 'path': r[2], 'original_filename': r[3], 'comment': r[4], 'created_at': r[5], 'url': f"/rooms/{room_id}/files/{room_file_id}"}
+        return {'message': msg, 'file': file_meta}
+
+
 @router.delete('/rooms/{room_id}/messages/{message_id}')
 async def delete_message(room_id: int, message_id: int, user=Depends(require_auth)):
     """Admins/owner may delete messages in a room."""
@@ -622,6 +685,7 @@ async def post_room_message(room_id: int, request: Request, user=Depends(require
             cur = await db.execute('SELECT id FROM messages WHERE id = ? AND room_id = ?', (reply_to, room_id))
             if not await cur.fetchone():
                 raise HTTPException(status_code=400, detail='invalid reply_to')
+
         await db.execute('INSERT INTO messages (room_id, user_id, text, reply_to, created_at) VALUES (?, ?, ?, ?, ?)', (room_id, user['id'], text, reply_to, int(time.time())))
         await db.commit()
         cur = await db.execute('SELECT id, room_id, user_id, text, reply_to, created_at FROM messages WHERE rowid = last_insert_rowid()')
@@ -631,13 +695,19 @@ async def post_room_message(room_id: int, request: Request, user=Depends(require
             msg = {'id': r[0], 'room_id': r[1], 'user_id': r[2], 'text': r[3], 'reply_to': r[4], 'created_at': r[5]}
             if len(r) > 6:
                 msg['edited_at'] = r[6]
+            # attach reply preview object if reply_to exists
+            if msg.get('reply_to'):
+                cur = await db.execute('SELECT id, user_id, text, created_at FROM messages WHERE id = ? AND room_id = ?', (msg['reply_to'], room_id))
+                rr = await cur.fetchone()
+                if rr:
+                    msg['reply'] = {'id': rr[0], 'user_id': rr[1], 'text': rr[2], 'created_at': rr[3]}
         else:
             msg = {'room_id': room_id, 'user_id': user['id'], 'text': text}
         return {'message': msg}
 
 
 @router.get('/rooms/{room_id}/messages')
-async def list_room_messages(room_id: int, user=Depends(require_auth), limit: int = 50, offset: int = 0):
+async def list_room_messages(room_id: int, user=Depends(require_auth), limit: int = 50, offset: int = 0, before: int = None):
     """List messages for a room. Private rooms require membership."""
     async with aiosqlite.connect(DB) as db:
         cur = await db.execute('SELECT visibility FROM rooms WHERE id = ?', (room_id,))
@@ -654,8 +724,14 @@ async def list_room_messages(room_id: int, user=Depends(require_auth), limit: in
             if not await cur.fetchone():
                 raise HTTPException(status_code=403, detail='private room')
 
-        cur = await db.execute('SELECT id, user_id, text, reply_to, created_at, edited_at FROM messages WHERE room_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?', (room_id, limit, offset))
-        rows = await cur.fetchall()
+        if before is None:
+            cur = await db.execute('SELECT id, user_id, text, reply_to, created_at, edited_at FROM messages WHERE room_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?', (room_id, limit, offset))
+            rows = await cur.fetchall()
+        else:
+            # fetch messages older than `before` timestamp in descending order then reverse to ascending
+            cur = await db.execute('SELECT id, user_id, text, reply_to, created_at, edited_at FROM messages WHERE room_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT ? OFFSET ?', (room_id, before, limit, offset))
+            rows_desc = await cur.fetchall()
+            rows = list(reversed(rows_desc))
         msgs = []
         reply_ids = {r[3] for r in rows if r[3]}
         # determine if the requester is owner or admin; admins may see previews of messages
