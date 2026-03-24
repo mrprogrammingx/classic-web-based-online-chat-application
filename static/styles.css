@@ -1,0 +1,75 @@
+/* Simple responsive chat layout */
+:root{
+  --sidebar-width:260px;
+  --topbar-height:56px;
+  --bg:#f6f7fb;
+  --muted:#9aa3b2;
+  --accent:#2b90ff;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;background:var(--bg);color:#222}
+.topmenu{height:var(--topbar-height);display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:#fff;border-bottom:1px solid #e6e9ef}
+.topmenu .brand{font-weight:700}
+.topnav button{margin-left:8px}
+.app-grid{display:flex;height:calc(100vh - var(--topbar-height))}
+.rightbar{width:var(--sidebar-width);background:#fff;border-left:1px solid #e6e9ef;padding:12px;overflow:auto;display:flex;flex-direction:column}
+.rightbar h3{margin:6px 0;color:var(--muted);font-size:13px;display:flex;align-items:center;justify-content:space-between}
+.rightbar ul{list-style:none;padding:0;margin:0}
+.rightbar li{padding:8px;border-radius:6px;cursor:pointer}
+.rightbar li:hover{background:#f1f5fb}
+.members .online-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px}
+.members .online-dot.online{background:#2ecc71}
+.members .online-dot.offline{background:#ced4da}
+.rooms.compacted ul{max-height:48px;overflow:hidden}
+.messages-area{flex:1;display:flex;flex-direction:column;position:relative}
+.messages-header{padding:12px;border-bottom:1px solid #eef2f7;background:linear-gradient(90deg,#fff, #fbfdff)}
+.messages{flex:1;padding:16px;overflow:auto;background:linear-gradient(180deg,#fbfdff,#f6f7fb)}
+.message{max-width:72%;padding:10px 12px;margin-bottom:10px;border-radius:12px;background:#fff;box-shadow:0 1px 0 rgba(0,0,0,0.04)}
+.message.me{margin-left:auto;background:var(--accent);color:#fff}
+/* pending placeholder styling */
+.message.pending{opacity:0.85;border:1px dashed rgba(0,0,0,0.06);position:relative}
+.message.pending .controls{position:absolute;right:8px;top:8px;display:flex;gap:6px}
+.message.pending .controls button{padding:4px 8px;border-radius:6px;border:none;background:#fff;color:#333;font-size:12px}
+.message.pending.failed{background:#fff3f3;border-color:#ffcccc}
+.message.pending.failed .status{color:#d33;font-size:12px;margin-right:8px}
+.message .meta{font-size:12px;color:var(--muted);margin-bottom:6px}
+.composer{display:flex;flex-direction:column;padding:10px;border-top:1px solid #e6e9ef;background:#fff}
+.composer-controls{display:flex;gap:8px;margin-bottom:8px;align-items:center}
+.emoji-btn{background:#fff;border:1px solid #e6e9ef;padding:6px 8px;border-radius:6px;cursor:pointer}
+.file-input{display:inline-block}
+.composer textarea{flex:1;padding:8px;border:1px solid #e6e9ef;border-radius:8px;resize:none;margin-bottom:8px}
+.composer-actions{display:flex;justify-content:flex-end}
+.composer-actions button{padding:10px 14px;border:none;background:var(--accent);color:#fff;border-radius:8px}
+
+.reply-preview{background:#fff8e1;border:1px solid #ffe0a3;padding:8px;border-radius:8px;display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}
+.reply-text{color:#555;font-size:13px;max-height:48px;overflow:hidden}
+.reply-preview button{margin-left:auto;background:transparent;border:none;font-size:14px;cursor:pointer}
+
+/* emoji picker */
+.emoji-picker{position:absolute;bottom:72px;left:12px;background:#fff;border:1px solid #e6e9ef;padding:8px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.08);display:none;z-index:50}
+.emoji-picker .emoji-grid{display:grid;grid-template-columns:repeat(8,28px);gap:6px}
+.emoji-picker button{background:transparent;border:none;font-size:18px;cursor:pointer}
+
+/* upload spinner */
+.uploading-indicator{position:fixed;top:8px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:6px 10px;border-radius:12px;font-size:13px;display:none;z-index:60}
+
+/* attachment preview in message */
+.attachment{margin-top:8px}
+.attachment img{max-width:200px;border-radius:8px;display:block}
+.attachment .file-link{display:inline-block;background:#f1f5fb;padding:6px 8px;border-radius:6px}
+.attachment-progress{display:flex;align-items:center;gap:8px;margin:8px 0}
+.attachment-progress progress{width:160px}
+.selected-file{margin-top:6px;font-size:13px}
+
+@media (max-width:800px){
+  .sidebar{display:none}
+  .messages{padding:10px}
+}
+
+/* login overlay */
+.login-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;z-index:9999}
+.login-box{background:#fff;padding:20px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.2);width:320px}
+.login-box h3{margin:0 0 12px}
+.login-box form{display:flex;flex-direction:column}
+.login-box input{padding:10px;margin-bottom:8px;border:1px solid #e6e9ef;border-radius:6px}
+.login-box button{padding:10px;background:var(--accent);color:#fff;border-radius:6px;border:none}
