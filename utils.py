@@ -9,7 +9,11 @@ import os
 pwd = CryptContext(schemes=['pbkdf2_sha256'], deprecated='auto')
 JWT_SECRET = 'change_this_secret'
 JWT_ALGO = 'HS256'
-PRESENCE_ONLINE_SECONDS = int(os.getenv('PRESENCE_ONLINE_SECONDS', '60'))  # default 60s, override with env var for tests
+def presence_online_seconds():
+    try:
+        return int(os.getenv('PRESENCE_ONLINE_SECONDS', '60'))
+    except Exception:
+        return 60
 
 def hash_pw(pw: str) -> str:
     return pwd.hash(pw)
@@ -114,7 +118,7 @@ async def get_presence_status(user_id: int):
     - If all tabs exist but all last_active older than 60s -> 'AFK'
     - If no tabs -> 'offline'
     """
-    cutoff = int(time.time()) - PRESENCE_ONLINE_SECONDS
+    cutoff = int(time.time()) - presence_online_seconds()
     async with aiosqlite.connect(DB) as db:
         cur = await db.execute('SELECT COUNT(*) FROM tab_presence WHERE user_id = ?', (user_id,))
         total = (await cur.fetchone())[0]
@@ -134,7 +138,7 @@ async def get_presence_statuses(user_ids: list):
     """
     if not user_ids:
         return {}
-    cutoff = int(time.time()) - PRESENCE_ONLINE_SECONDS
+    cutoff = int(time.time()) - presence_online_seconds()
     placeholders = ','.join(['?'] * len(user_ids))
     # use MAX(last_active) to determine if any tab is recent, and COUNT(*) for existence
     sql = f"SELECT user_id, COUNT(*) as total, MAX(last_active) as last_active_max FROM tab_presence WHERE user_id IN ({placeholders}) GROUP BY user_id"
