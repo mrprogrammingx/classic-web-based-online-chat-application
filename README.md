@@ -1,73 +1,96 @@
-# classic-web-based-online-chat-application
+# Classic Web Chat (small README)
 
-Lightweight FastAPI-based demo of a web chat backend focused on authentication, per-session JWTs, and multi-tab presence. This repository is intended as a small, runnable example (SQLite) and contains a minimal static demo UI under `/static`.
+A small FastAPI chat backend (SQLite) with registration, per-session JWTs, presence, friends/bans, private messaging, and chat rooms (public + private).
 
-## Features implemented
-- User registration and login (passwords hashed with passlib/pbkdf2_sha256)
-- JWT tokens with per-session identifiers (jti) and session rows in SQLite for per-session revocation
-- Persistent login using HttpOnly cookie + `/refresh` endpoint
-- Per-session logout (invalidates current session only)
-- Password reset (demo token), password change, and account deletion with cleanup of rooms/messages/memberships/sessions
-- Multi-tab presence tracking (online / AFK / offline) using per-tab heartbeats and a `tab_presence` table
-- Session listing and session revoke endpoints
-- Admin endpoints: list users, delete user, promote user to admin
-- Minimal static demo UI (`/static/index.html`, `static/main.js`) with heartbeat and admin modal
-- Small management CLI to create/promote/delete users: `scripts/manage_users.py` and `scripts/add_admin.sh`
-- Integration tests (pytest) that exercise register/login/presence flows (`tests/test_presence_api.py`)
+This README shows how to set up, run, and test locally and documents the rooms behavior and troubleshooting tips.
 
-## Quick start (local development)
-Prerequisites: Python 3.11+, virtualenv recommended.
+## Quick start
 
-1. Create and activate a virtualenv (example):
+1. Create and activate a virtualenv in the repo root:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
 ```
 
-2. Start the server:
+2. Install dependencies:
 
 ```bash
-.venv/bin/uvicorn app:app --reload
+.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -r requirements-dev.txt
 ```
 
-3. Open the demo UI in your browser:
-
-- http://127.0.0.1:8000/
-
-4. Create an admin (optional):
+3. Run the development server:
 
 ```bash
-./scripts/add_admin.sh admin@example.com admin Secret123!
-# or
-python3 scripts/manage_users.py create --email admin@example.com --username admin --password Secret123! --admin
+.venv/bin/uvicorn app:app --reload --port 8000
 ```
 
-## Important endpoints
-- POST /register — register user (returns token and sets cookie)
-- POST /login — login (returns token and sets cookie)
-- POST /logout — logout current session (removes session row and cookie)
-- POST /refresh — renew token and extend session expiry
-- GET /sessions — list current user's active sessions (requires auth)
-- POST /sessions/revoke — revoke a session by jti (requires auth)
-- POST /presence/heartbeat — tab heartbeat (tab_id + jti)
-- POST /presence/close — notify server a tab closed
-- GET /presence/{user_id} — get presence status for a user
-- GET /admin/users — list users (admin only)
-- POST /admin/users/promote — promote user to admin (admin only)
-- POST /admin/users/delete — delete a user (admin only)
-
-## Tests
-Run the integration tests (requires server running on http://127.0.0.1:8000):
+4. Run the test suite (the test fixture will start a test server on 127.0.0.1:8000):
 
 ```bash
-pytest -q
+.venv/bin/pytest -q
 ```
 
-## Notes and next steps
-- Persistence is SQLite for demo purposes. For production, consider Postgres for data and Redis for presence/session TTLs.
-- Consider adding CSRF protection and Secure cookies when deploying behind HTTPS.
-- Add automated migrations (Alembic) and CI workflow to run tests and format/lint checks.
+Run a single test file:
 
-If you want, I can convert integration tests to non-networked TestClient tests, add CI (GitHub Actions), or migrate presence to Redis.
+```bash
+.venv/bin/pytest -q tests/test_public_rooms_catalog.py -q
+```
+
+## Rooms API (high level)
+
+- POST /rooms — create a room. Body: { name, description?, visibility? } (visibility is `public` or `private`). Owner is automatically a member and admin.
+- GET /rooms — public rooms catalog. Supports `q` (substring search), `limit`, `offset`. Each item includes `member_count`.
+- GET /rooms/{room_id} — room details (owner_id, admins, members (IDs), bans). Private rooms require membership to view.
+- POST /rooms/{room_id}/join — join a public room (banned users blocked). Private rooms cannot be joined without invitation.
+- POST /rooms/{room_id}/leave — leave a room. The owner cannot leave their own room (403).
+- DELETE /rooms/{room_id} — owner-only: delete the room.
+- POST /rooms/{room_id}/members/add — owner/admin can add (invite) users to a private room.
+- POST /rooms/{room_id}/admins/add and /admins/remove — manage admins.
+- POST /rooms/{room_id}/ban and /unban — ban/unban users (bans remove membership/admin status).
+- POST /rooms/{room_id}/messages and GET /rooms/{room_id}/messages — post/list messages. Posting rules:
+  - public rooms: any registered user may post unless banned
+  - private rooms: only members may post
+
+## Important semantics
+
+- Private rooms do not appear in the public catalog and are accessible only to invited members.
+- The owner cannot leave their own room. Only the owner may delete the room.
+- Banning a user from a room removes them from members and admins; they must be unbanned and re-added.
+
+## Troubleshooting
+
+- If pytest fails because uvicorn won't start or you see 404s/500s, check the test server log written by the test fixture:
+
+```bash
+tail -n 200 /tmp/test_uvicorn.log || true
+```
+
+- If you see ModuleNotFoundError (e.g. `passlib`), ensure you run pytest using the project virtualenv Python:
+
+```bash
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/pytest -q
+```
+
+- If port 8000 is occupied by another server, stop it before running tests or kill stale uvicorn processes:
+
+```bash
+lsof -nP -iTCP:8000 -sTCP:LISTEN || true
+pkill -f uvicorn || true
+```
+
+- If you encounter SQLite schema errors, remove the `auth.db` and let the app re-create it during tests (this deletes local data):
+
+```bash
+rm -f auth.db
+.venv/bin/pytest -q
+```
+
+## Development notes
+
+- DB migrations: the app runs a small migration step on startup (safe ALTERs) to support older DB files.
+- Tests: use the `tests/conftest.py` fixture which starts uvicorn as a subprocess under the invoking Python.
+
+If you'd like, I can add a CI workflow (GitHub Actions), improve search (case-insensitive or SQLite FTS), or add a member listing endpoint with user details.

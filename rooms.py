@@ -35,11 +35,45 @@ async def create_room(request: Request, user=Depends(require_auth)):
 
 
 @router.get('/rooms')
-async def list_rooms():
+async def list_rooms(q: str = None, limit: int = 50, offset: int = 0):
+    """List public rooms. Supports simple search via `q` (substring match on name or description).
+
+    Returns each room with a `member_count` field.
+    """
     async with aiosqlite.connect(DB) as db:
-        cur = await db.execute("SELECT id, owner_id, name, description, visibility, created_at FROM rooms WHERE visibility = 'public' ORDER BY created_at DESC")
+        params = []
+        where = "WHERE visibility = 'public'"
+        if q:
+            where += " AND (name LIKE ? OR description LIKE ?)"
+            pattern = f"%{q}%"
+            params.extend([pattern, pattern])
+        # limit/offset for simple pagination
+        params.extend([limit, offset])
+        # join memberships to compute member counts
+        sql = f"""
+        SELECT r.id, r.owner_id, r.name, r.description, r.visibility, r.created_at,
+               COUNT(m.id) as member_count
+        FROM rooms r
+        LEFT JOIN memberships m ON m.room_id = r.id
+        {where}
+        GROUP BY r.id
+        ORDER BY r.created_at DESC
+        LIMIT ? OFFSET ?
+        """
+        cur = await db.execute(sql, params)
         rows = await cur.fetchall()
-        rooms = [{'id': r[0], 'owner_id': r[1], 'name': r[2], 'description': r[3], 'visibility': r[4], 'created_at': r[5]} for r in rows]
+        rooms = [
+            {
+                'id': r[0],
+                'owner_id': r[1],
+                'name': r[2],
+                'description': r[3],
+                'visibility': r[4],
+                'created_at': r[5],
+                'member_count': r[6],
+            }
+            for r in rows
+        ]
         return {'rooms': rooms}
 
 
@@ -51,6 +85,10 @@ async def get_room(room_id: int, user=Depends(require_auth)):
         if not row:
             raise HTTPException(status_code=404, detail='room not found')
         room = {'id': row[0], 'owner_id': row[1], 'name': row[2], 'description': row[3], 'visibility': row[4], 'created_at': row[5]}
+        # check ban
+        cur = await db.execute('SELECT id FROM room_bans WHERE room_id = ? AND banned_id = ?', (room_id, user['id']))
+        if await cur.fetchone():
+            raise HTTPException(status_code=403, detail='banned from room')
         # check membership if private
         if room['visibility'] == 'private':
             cur = await db.execute('SELECT id FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
@@ -90,9 +128,58 @@ async def join_room(room_id: int, user=Depends(require_auth)):
 @router.post('/rooms/{room_id}/leave')
 async def leave_room(room_id: int, user=Depends(require_auth)):
     async with aiosqlite.connect(DB) as db:
+        # owner cannot leave their own room
+        cur = await db.execute('SELECT owner_id FROM rooms WHERE id = ?', (room_id,))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='room not found')
+        owner_id = row[0]
+        if owner_id == user['id']:
+            raise HTTPException(status_code=403, detail='owner cannot leave room')
         await db.execute('DELETE FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
         # also remove from admins if present
         await db.execute('DELETE FROM room_admins WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
+        await db.commit()
+        return {'ok': True}
+
+
+
+@router.delete('/rooms/{room_id}')
+async def delete_room(room_id: int, user=Depends(require_auth)):
+    """Owner may delete their room. Deleting cascades via DB foreign keys."""
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute('SELECT owner_id FROM rooms WHERE id = ?', (room_id,))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='room not found')
+        owner_id = row[0]
+        if owner_id != user['id']:
+            raise HTTPException(status_code=403, detail='not authorized')
+        # delete associated files from disk (if tracked in room_files)
+        cur = await db.execute('SELECT id, path FROM room_files WHERE room_id = ?', (room_id,))
+        rows = await cur.fetchall()
+        import os
+
+        for r in rows:
+            fid, p = r[0], r[1]
+            try:
+                # handle both absolute and relative paths
+                if not os.path.isabs(p):
+                    p = os.path.join('uploads', p)
+                if os.path.exists(p):
+                    os.remove(p)
+            except Exception:
+                # ignore file deletion errors but continue
+                pass
+        # remove DB rows for files (cascade would remove on room delete, but clean explicitly)
+        await db.execute('DELETE FROM room_files WHERE room_id = ?', (room_id,))
+        # delete messages, memberships, admins, bans explicitly to be robust
+        await db.execute('DELETE FROM messages WHERE room_id = ?', (room_id,))
+        await db.execute('DELETE FROM memberships WHERE room_id = ?', (room_id,))
+        await db.execute('DELETE FROM room_admins WHERE room_id = ?', (room_id,))
+        await db.execute('DELETE FROM room_bans WHERE room_id = ?', (room_id,))
+        # now delete the room
+        await db.execute('DELETE FROM rooms WHERE id = ?', (room_id,))
         await db.commit()
         return {'ok': True}
 
@@ -135,6 +222,11 @@ async def remove_admin(room_id: int, request: Request, user=Depends(require_auth
         checker = _is_owner_or_admin(db, room_id, user['id'])
         if not await checker():
             raise HTTPException(status_code=403, detail='not authorized')
+        # owner must always remain an admin
+        cur = await db.execute('SELECT owner_id FROM rooms WHERE id = ?', (room_id,))
+        row = await cur.fetchone()
+        if row and row[0] == uid:
+            raise HTTPException(status_code=403, detail='cannot remove owner admin status')
         await db.execute('DELETE FROM room_admins WHERE room_id = ? AND user_id = ?', (room_id, uid))
         await db.commit()
         return {'ok': True}
@@ -150,7 +242,13 @@ async def ban_user(room_id: int, request: Request, user=Depends(require_auth)):
         checker = _is_owner_or_admin(db, room_id, user['id'])
         if not await checker():
             raise HTTPException(status_code=403, detail='not authorized')
-        await db.execute('INSERT OR IGNORE INTO room_bans (room_id, banned_id, created_at) VALUES (?, ?, ?)', (room_id, uid, int(time.time())))
+        # prevent banning the owner
+        cur = await db.execute('SELECT owner_id FROM rooms WHERE id = ?', (room_id,))
+        row = await cur.fetchone()
+        if row and row[0] == uid:
+            raise HTTPException(status_code=403, detail='cannot ban owner')
+        # record who banned the user
+        await db.execute('INSERT OR IGNORE INTO room_bans (room_id, banned_id, banner_id, created_at) VALUES (?, ?, ?, ?)', (room_id, uid, user['id'], int(time.time())))
         # remove from memberships and admins
         await db.execute('DELETE FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, uid))
         await db.execute('DELETE FROM room_admins WHERE room_id = ? AND user_id = ?', (room_id, uid))
@@ -171,3 +269,274 @@ async def unban_user(room_id: int, request: Request, user=Depends(require_auth))
         await db.execute('DELETE FROM room_bans WHERE room_id = ? AND banned_id = ?', (room_id, uid))
         await db.commit()
         return {'ok': True}
+
+
+@router.get('/rooms/{room_id}/bans')
+async def list_bans(room_id: int, user=Depends(require_auth)):
+    """List banned users for a room along with who banned them. Admins/owner only."""
+    async with aiosqlite.connect(DB) as db:
+        checker = _is_owner_or_admin(db, room_id, user['id'])
+        if not await checker():
+            raise HTTPException(status_code=403, detail='not authorized')
+        cur = await db.execute('SELECT banned_id, banner_id, created_at FROM room_bans WHERE room_id = ?', (room_id,))
+        rows = await cur.fetchall()
+        bans = [{'banned_id': r[0], 'banner_id': r[1], 'created_at': r[2]} for r in rows]
+        return {'bans': bans}
+
+
+@router.post('/rooms/{room_id}/members/remove')
+async def remove_member(room_id: int, request: Request, user=Depends(require_auth)):
+    """Owner or admin may remove a member from the room."""
+    body = await request.json()
+    uid = body.get('user_id')
+    if not uid:
+        raise HTTPException(status_code=400, detail='user_id required')
+    async with aiosqlite.connect(DB) as db:
+        checker = _is_owner_or_admin(db, room_id, user['id'])
+        if not await checker():
+            raise HTTPException(status_code=403, detail='not authorized')
+        # owner may remove anyone; admins may not remove the owner
+        cur = await db.execute('SELECT owner_id FROM rooms WHERE id = ?', (room_id,))
+        row = await cur.fetchone()
+        if row and row[0] == uid and row[0] != user['id']:
+            raise HTTPException(status_code=403, detail='cannot remove owner')
+        # treat removal as a ban: remove membership/admin and add to room_bans
+        await db.execute('DELETE FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, uid))
+        await db.execute('DELETE FROM room_admins WHERE room_id = ? AND user_id = ?', (room_id, uid))
+        # record who removed (banner)
+        await db.execute('INSERT OR IGNORE INTO room_bans (room_id, banned_id, banner_id, created_at) VALUES (?, ?, ?, ?)', (room_id, uid, user['id'], int(time.time())))
+        await db.commit()
+        return {'ok': True}
+
+
+@router.get('/rooms/{room_id}/files')
+async def list_room_files(room_id: int, user=Depends(require_auth)):
+    """List files tracked for a room. Private rooms require membership. Banned users blocked."""
+    async with aiosqlite.connect(DB) as db:
+        # check room exists
+        cur = await db.execute('SELECT visibility FROM rooms WHERE id = ?', (room_id,))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='room not found')
+        visibility = row[0]
+        # check ban
+        cur = await db.execute('SELECT id FROM room_bans WHERE room_id = ? AND banned_id = ?', (room_id, user['id']))
+        if await cur.fetchone():
+            raise HTTPException(status_code=403, detail='banned from room')
+        if visibility == 'private':
+            cur = await db.execute('SELECT id FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
+            if not await cur.fetchone():
+                raise HTTPException(status_code=403, detail='private room')
+        cur = await db.execute('SELECT id, path, created_at FROM room_files WHERE room_id = ?', (room_id,))
+        rows = await cur.fetchall()
+        files = [{'id': r[0], 'path': r[1], 'created_at': r[2]} for r in rows]
+        return {'files': files}
+
+
+from fastapi.responses import FileResponse
+
+
+@router.get('/rooms/{room_id}/files/{file_id}')
+async def get_room_file(room_id: int, file_id: int, user=Depends(require_auth)):
+    """Serve a file for a room with permission checks."""
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute('SELECT path FROM room_files WHERE id = ? AND room_id = ?', (file_id, room_id))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='file not found')
+        path = row[0]
+        # check ban
+        cur = await db.execute('SELECT id FROM room_bans WHERE room_id = ? AND banned_id = ?', (room_id, user['id']))
+        if await cur.fetchone():
+            raise HTTPException(status_code=403, detail='banned from room')
+        # check room visibility/membership
+        cur = await db.execute('SELECT visibility FROM rooms WHERE id = ?', (room_id,))
+        r2 = await cur.fetchone()
+        if not r2:
+            raise HTTPException(status_code=404, detail='room not found')
+        visibility = r2[0]
+        if visibility == 'private':
+            cur = await db.execute('SELECT id FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
+            if not await cur.fetchone():
+                raise HTTPException(status_code=403, detail='private room')
+        # resolve path
+        import os
+
+        p = path
+        if not os.path.isabs(p):
+            p = os.path.join('uploads', p)
+        if not os.path.exists(p):
+            raise HTTPException(status_code=404, detail='file not found on disk')
+        return FileResponse(p)
+
+
+@router.delete('/rooms/{room_id}/messages/{message_id}')
+async def delete_message(room_id: int, message_id: int, user=Depends(require_auth)):
+    """Admins/owner may delete messages in a room."""
+    async with aiosqlite.connect(DB) as db:
+        checker = _is_owner_or_admin(db, room_id, user['id'])
+        if not await checker():
+            raise HTTPException(status_code=403, detail='not authorized')
+        # ensure message exists and belongs to room
+        cur = await db.execute('SELECT id FROM messages WHERE id = ? AND room_id = ?', (message_id, room_id))
+        if not await cur.fetchone():
+            raise HTTPException(status_code=404, detail='message not found')
+        await db.execute('DELETE FROM messages WHERE id = ? AND room_id = ?', (message_id, room_id))
+        await db.commit()
+        return {'ok': True}
+
+
+@router.post('/rooms/{room_id}/members/add')
+async def add_member(room_id: int, request: Request, user=Depends(require_auth)):
+    """Owner or admin can add a user as a member (useful for private rooms). Body: { user_id }"""
+    body = await request.json()
+    uid = body.get('user_id')
+    if not uid:
+        raise HTTPException(status_code=400, detail='user_id required')
+    async with aiosqlite.connect(DB) as db:
+        checker = _is_owner_or_admin(db, room_id, user['id'])
+        if not await checker():
+            raise HTTPException(status_code=403, detail='not authorized')
+        # don't add if banned
+        cur = await db.execute('SELECT id FROM room_bans WHERE room_id = ? AND banned_id = ?', (room_id, uid))
+        if await cur.fetchone():
+            raise HTTPException(status_code=403, detail='user is banned')
+        await db.execute('INSERT OR IGNORE INTO memberships (room_id, user_id, created_at) VALUES (?, ?, ?)', (room_id, uid, int(time.time())))
+        await db.commit()
+        return {'ok': True}
+
+
+@router.post('/rooms/{room_id}/invite')
+async def invite_to_room(room_id: int, request: Request, user=Depends(require_auth)):
+    """Owner/admin may invite a user to a private room. Body: { invitee_id }
+    Invites are recorded in `invitations` and can be accepted by the invitee.
+    """
+    body = await request.json()
+    invitee = body.get('invitee_id')
+    if not invitee:
+        raise HTTPException(status_code=400, detail='invitee_id required')
+    async with aiosqlite.connect(DB) as db:
+        checker = _is_owner_or_admin(db, room_id, user['id'])
+        if not await checker():
+            raise HTTPException(status_code=403, detail='not authorized')
+        # ensure room exists and is private
+        cur = await db.execute('SELECT visibility FROM rooms WHERE id = ?', (room_id,))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='room not found')
+        if row[0] != 'private':
+            raise HTTPException(status_code=400, detail='invites only for private rooms')
+        # insert invitation
+        await db.execute('INSERT OR IGNORE INTO invitations (room_id, inviter_id, invitee_id, created_at) VALUES (?, ?, ?, ?)', (room_id, user['id'], invitee, int(time.time())))
+        await db.commit()
+        return {'ok': True}
+
+
+@router.get('/rooms/{room_id}/invites')
+async def list_invites(room_id: int, user=Depends(require_auth)):
+    """List invitations for a room (admins/owner) or for the authenticated user (invitee)."""
+    async with aiosqlite.connect(DB) as db:
+        # if caller is owner/admin, list invites for room
+        checker = _is_owner_or_admin(db, room_id, user['id'])
+        if await checker():
+            cur = await db.execute('SELECT id, inviter_id, invitee_id, created_at FROM invitations WHERE room_id = ?', (room_id,))
+            rows = await cur.fetchall()
+            invs = [{'id': r[0], 'inviter_id': r[1], 'invitee_id': r[2], 'created_at': r[3]} for r in rows]
+            return {'invites': invs}
+        # otherwise list invites for this user across rooms
+        cur = await db.execute('SELECT id, room_id, inviter_id, created_at FROM invitations WHERE invitee_id = ?', (user['id'],))
+        rows = await cur.fetchall()
+        invs = [{'id': r[0], 'room_id': r[1], 'inviter_id': r[2], 'created_at': r[3]} for r in rows]
+        return {'invites': invs}
+
+
+@router.post('/rooms/{room_id}/invites/{invite_id}/accept')
+async def accept_invite(room_id: int, invite_id: int, user=Depends(require_auth)):
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute('SELECT invitee_id FROM invitations WHERE id = ? AND room_id = ?', (invite_id, room_id))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='invite not found')
+        if row[0] != user['id']:
+            raise HTTPException(status_code=403, detail='not the invitee')
+        # add membership (but respect bans)
+        cur = await db.execute('SELECT id FROM room_bans WHERE room_id = ? AND banned_id = ?', (room_id, user['id']))
+        if await cur.fetchone():
+            raise HTTPException(status_code=403, detail='banned from room')
+        await db.execute('INSERT OR IGNORE INTO memberships (room_id, user_id, created_at) VALUES (?, ?, ?)', (room_id, user['id'], int(time.time())))
+        await db.execute('DELETE FROM invitations WHERE id = ?', (invite_id,))
+        await db.commit()
+        return {'ok': True}
+
+
+@router.post('/rooms/{room_id}/invites/{invite_id}/decline')
+async def decline_invite(room_id: int, invite_id: int, user=Depends(require_auth)):
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute('SELECT invitee_id FROM invitations WHERE id = ? AND room_id = ?', (invite_id, room_id))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='invite not found')
+        if row[0] != user['id']:
+            raise HTTPException(status_code=403, detail='not the invitee')
+        await db.execute('DELETE FROM invitations WHERE id = ?', (invite_id,))
+        await db.commit()
+        return {'ok': True}
+
+
+@router.post('/rooms/{room_id}/messages')
+async def post_room_message(room_id: int, request: Request, user=Depends(require_auth)):
+    """Post a message to a room. Body: { text }
+    - public rooms: any registered user may post unless banned
+    - private rooms: only members may post
+    Banned users cannot post.
+    """
+    body = await request.json()
+    text = body.get('text')
+    if not text:
+        raise HTTPException(status_code=400, detail='text required')
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute('SELECT visibility FROM rooms WHERE id = ?', (room_id,))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='room not found')
+        visibility = row[0]
+        # banned check
+        cur = await db.execute('SELECT id FROM room_bans WHERE room_id = ? AND banned_id = ?', (room_id, user['id']))
+        if await cur.fetchone():
+            raise HTTPException(status_code=403, detail='banned from room')
+        if visibility == 'private':
+            cur = await db.execute('SELECT id FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
+            if not await cur.fetchone():
+                raise HTTPException(status_code=403, detail='private room')
+        await db.execute('INSERT INTO messages (room_id, user_id, text, created_at) VALUES (?, ?, ?, ?)', (room_id, user['id'], text, int(time.time())))
+        await db.commit()
+        cur = await db.execute('SELECT id, room_id, user_id, text, created_at FROM messages WHERE rowid = last_insert_rowid()')
+        r = await cur.fetchone()
+        if r:
+            msg = {'id': r[0], 'room_id': r[1], 'user_id': r[2], 'text': r[3], 'created_at': r[4]}
+        else:
+            msg = {'room_id': room_id, 'user_id': user['id'], 'text': text}
+        return {'message': msg}
+
+
+@router.get('/rooms/{room_id}/messages')
+async def list_room_messages(room_id: int, user=Depends(require_auth)):
+    """List messages for a room. Private rooms require membership."""
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute('SELECT visibility FROM rooms WHERE id = ?', (room_id,))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='room not found')
+        visibility = row[0]
+        # banned check
+        cur = await db.execute('SELECT id FROM room_bans WHERE room_id = ? AND banned_id = ?', (room_id, user['id']))
+        if await cur.fetchone():
+            raise HTTPException(status_code=403, detail='banned from room')
+        if visibility == 'private':
+            cur = await db.execute('SELECT id FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
+            if not await cur.fetchone():
+                raise HTTPException(status_code=403, detail='private room')
+        cur = await db.execute('SELECT user_id, text, created_at FROM messages WHERE room_id = ? ORDER BY created_at ASC', (room_id,))
+        rows = await cur.fetchall()
+        msgs = [{'user_id': r[0], 'text': r[1], 'created_at': r[2]} for r in rows]
+        return {'messages': msgs}

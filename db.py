@@ -55,9 +55,11 @@ async def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             room_id INTEGER NOT NULL,
             banned_id INTEGER NOT NULL,
+            banner_id INTEGER,
             created_at INTEGER,
             FOREIGN KEY(room_id) REFERENCES rooms(id) ON DELETE CASCADE,
             FOREIGN KEY(banned_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(banner_id) REFERENCES users(id) ON DELETE SET NULL,
             UNIQUE(room_id, banned_id)
         );
 
@@ -158,6 +160,23 @@ async def init_db():
         );
         ''')
         await db.commit()
+        # migrate older rooms table to add description/visibility if missing
+        cur = await db.execute("PRAGMA table_info('rooms')")
+        cols = await cur.fetchall()
+        existing_rooms_cols = {c[1] for c in cols}
+        room_alters = []
+        if 'description' not in existing_rooms_cols:
+            room_alters.append("ALTER TABLE rooms ADD COLUMN description TEXT")
+        if 'visibility' not in existing_rooms_cols:
+            # default to public for older rows
+            room_alters.append("ALTER TABLE rooms ADD COLUMN visibility TEXT DEFAULT 'public'")
+        for stmt in room_alters:
+            try:
+                await db.execute(stmt)
+            except Exception:
+                pass
+        if room_alters:
+            await db.commit()
         # create private_messages table for 1:1 messages
         await db.executescript('''
         CREATE TABLE IF NOT EXISTS private_messages (
@@ -171,3 +190,40 @@ async def init_db():
         );
         ''')
         await db.commit()
+        # create room_files table to track uploaded files for rooms
+        await db.executescript('''
+        CREATE TABLE IF NOT EXISTS room_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            path TEXT NOT NULL,
+            created_at INTEGER,
+            FOREIGN KEY(room_id) REFERENCES rooms(id) ON DELETE CASCADE
+        );
+        ''')
+        await db.commit()
+        # create invitations table for private room invites
+        await db.executescript('''
+        CREATE TABLE IF NOT EXISTS invitations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            inviter_id INTEGER NOT NULL,
+            invitee_id INTEGER NOT NULL,
+            created_at INTEGER,
+            FOREIGN KEY(room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+            FOREIGN KEY(inviter_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY(invitee_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(room_id, invitee_id)
+        );
+        ''')
+        await db.commit()
+        # migrate room_bans table to add banner_id if missing
+        cur = await db.execute("PRAGMA table_info('room_bans')")
+        cols = await cur.fetchall()
+        existing_bans_cols = {c[1] for c in cols}
+        if 'banner_id' not in existing_bans_cols:
+            try:
+                await db.execute("ALTER TABLE room_bans ADD COLUMN banner_id INTEGER")
+                await db.commit()
+            except Exception:
+                # ignore failures on older DBs
+                pass
