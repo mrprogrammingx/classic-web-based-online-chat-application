@@ -20,6 +20,7 @@ from presence import router as presence_router
 from admin import router as admin_router
 from friends import router as friends_router
 from messages import router as messages_router
+from rooms import router as rooms_router
 
 app = FastAPI()
 
@@ -134,6 +135,7 @@ app.include_router(presence_router)
 app.include_router(admin_router)
 app.include_router(friends_router)
 app.include_router(messages_router)
+app.include_router(rooms_router)
 
 @app.post('/refresh')
 async def refresh(authorization: str = Header(None), token: str = Cookie(None)):

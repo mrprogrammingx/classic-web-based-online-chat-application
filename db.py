@@ -16,6 +16,8 @@ async def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             owner_id INTEGER,
             name TEXT,
+            description TEXT,
+            visibility TEXT DEFAULT 'public',
             created_at INTEGER,
             FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE SET NULL
         );
@@ -37,6 +39,26 @@ async def init_db():
             created_at INTEGER,
             FOREIGN KEY(room_id) REFERENCES rooms(id) ON DELETE CASCADE,
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS room_admins (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            created_at INTEGER,
+            FOREIGN KEY(room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(room_id, user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS room_bans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            banned_id INTEGER NOT NULL,
+            created_at INTEGER,
+            FOREIGN KEY(room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+            FOREIGN KEY(banned_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(room_id, banned_id)
         );
 
         CREATE TABLE IF NOT EXISTS sessions (
@@ -63,6 +85,13 @@ async def init_db():
         );
         ''')
         await db.commit()
+        # ensure room names are unique at the DB level
+        try:
+            await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_rooms_name_unique ON rooms(name);")
+            await db.commit()
+        except Exception:
+            # ignore if create index fails for any reason (older DBs etc.)
+            pass
         # run migrations for existing DB: add columns to sessions if missing
         cur = await db.execute("PRAGMA table_info('sessions')")
         cols = await cur.fetchall()
