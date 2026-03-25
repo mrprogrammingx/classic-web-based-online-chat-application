@@ -45,3 +45,20 @@ Notes
 -----
 - If TestClient fails due to httpx/httpcore compatibility, use Python 3.11/3.12
   for hermetic runs or run the networked tests instead.
+
+New admin tests
+---------------
+We added server-side filtering/search/pagination tests and cleanup tests for the
+admin UI. They live in `tests/test_admin_user_cleanup.py` and
+`tests/test_admin_search_and_pagination.py` and exercise:
+
+- user deletion cascade cleanup (removes bans, sessions, memberships, messages)
+- `/admin/users` server-side filtering (filter, q, page, per_page)
+- `/admin/users/counts` for counts displayed on the admin UI
+
+Run them the same way as other networked tests (server must be running):
+
+```bash
+uvicorn app:app --reload
+.venv/bin/pytest -q tests/test_admin_user_cleanup.py tests/test_admin_search_and_pagination.py
+```

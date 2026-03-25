@@ -131,4 +131,24 @@ Notes:
 - The CI workflow at `.github/workflows/playwright.yml` in this repo runs the same spec on pushes/PRs. The workflow starts a uvicorn server in the background before running Playwright.
 - If tests fail because the server isn't ready, wait for `http://127.0.0.1:8000` to respond or increase the startup sleep/probe in CI.
 
+Test-mode note (required for deterministic test user creation)
+---------------------------------------------------------
+
+Some Playwright specs use a test-only server helper endpoint (`POST /_test/create_user`) to create users deterministically and return an auth token. That endpoint is only exposed when the server process is started with the environment variable `TEST_MODE=1` (this prevents exposing test helpers in production).
+
+To run Playwright tests locally against a server started with the test helpers enabled, either:
+
+1) Start the server manually with TEST_MODE enabled in a separate terminal:
+
+```bash
+export TEST_MODE=1
+.venv/bin/uvicorn app:app --reload --port 8000
+```
+
+or
+
+2) Ensure the pytest-based test harness which launches uvicorn sets `TEST_MODE=1` in its environment (the repository's `tests/conftest.py` sets this automatically when running the pytest harness). When relying on the pytest harness, run the Playwright specs via the test runner so the fixture starts the server with TEST_MODE enabled.
+
+If `/_test/create_user` returns 404 during tests, that usually means the server process wasn't started with `TEST_MODE=1`.
+
 If you'd like, I can add Playwright fixtures (for shared setup/teardown), collect traces/screenshots on failure, and upload those artifacts from CI for easier debugging.
