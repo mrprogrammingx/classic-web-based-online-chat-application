@@ -16,6 +16,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
   const contactsList = document.getElementById('contacts-list');
   const membersList = document.getElementById('members-list');
   const messagesEl = document.getElementById('messages');
+  // expose to extracted modules which use window.messagesEl
+  try{ window.messagesEl = messagesEl; }catch(e){}
   const roomTitle = document.getElementById('room-title');
   const composer = document.getElementById('composer');
   const input = document.getElementById('message-input');
@@ -55,283 +57,34 @@ document.addEventListener('DOMContentLoaded', ()=>{
     });
   }
 
-  function renderRooms(){
-    roomsList.innerHTML = '';
-    rooms.forEach(r=>{
-      const li = document.createElement('li');
-      const title = document.createElement('span');
-      title.textContent = r.name;
-      li.appendChild(title);
-      const badge = document.createElement('span'); badge.className = 'unread-badge hidden'; badge.textContent = '0'; li.appendChild(badge);
-      li.dataset.id = r.id;
-      li.addEventListener('click', ()=>selectRoom(r));
-      roomsList.appendChild(li);
-    });
-  }
-  function renderMembers(list){
-    membersList.innerHTML = '';
-    list.forEach(m=>{
-      const li = document.createElement('li');
-      const dot = document.createElement('span');
-      dot.className = 'online-dot ' + (m.online? 'online':'offline');
-      li.appendChild(dot);
-      const txt = document.createTextNode(m.name);
-      li.appendChild(txt);
-      membersList.appendChild(li);
-    });
-  }
-  function renderContacts(){
-    contactsList.innerHTML = '';
-    contacts.forEach(c=>{
-      const li = document.createElement('li');
-
-        // after appending a message, refresh unread badges (keeps UI in sync when new messages arrive)
-        try{ if(typeof loadUnreadSummary === 'function') loadUnreadSummary(); }catch(e){}
-      const title = document.createElement('span'); title.textContent = c.name; li.appendChild(title);
-      const badge = document.createElement('span'); badge.className='unread-badge hidden'; badge.textContent='0'; li.appendChild(badge);
-      li.dataset.id = c.id;
-      li.addEventListener('click', ()=>openDialog(c));
-      contactsList.appendChild(li);
-    });
-  }
-
-  // currently selected room/dialog
-  let currentRoom = null;
-
-  // Select a room from the room list and load its messages
-  function selectRoom(room){
-    try{
-      if(!room) return;
-      isDialog = false;
-      currentRoom = room;
-      // update UI active state
-      Array.from(roomsList.children).forEach(li => li.classList.toggle('active', String(li.dataset.id) === String(room.id)));
-      // set title
-      try{ roomTitle.textContent = room.name || ('room ' + room.id); }catch(e){}
-      // clear messages and load
-      messagesEl.innerHTML = '';
-      earliestTimestamp = null; latestTimestamp = null;
-      loadRoomMessages(room.id);
-      loadRoomMembers(room.id);
-    }catch(e){ console.warn('selectRoom failed', e); }
-  }
-
-  // Open a dialog (private conversation) with a contact
-  function openDialog(contact){
-    try{
-      if(!contact) return;
-      isDialog = true;
-      currentRoom = contact;
-      Array.from(contactsList.children).forEach(li => li.classList.toggle('active', String(li.dataset.id) === String(contact.id)));
-      try{ roomTitle.textContent = contact.name || ('user ' + contact.id); }catch(e){}
-      messagesEl.innerHTML = '';
-      earliestTimestamp = null; latestTimestamp = null;
-      loadDialogMessages(contact.id);
-      renderMembers([]);
-    }catch(e){ console.warn('openDialog failed', e); }
-  }
-
-  // Append a message element to the message list and return the element
-  function appendMessage(m){
-    try{
-      const wrap = document.createElement('div');
-      wrap.className = 'message ' + ((m.user_id && window.__ME_ID && m.user_id === window.__ME_ID) ? 'me' : '');
-      const meta = document.createElement('div'); meta.className = 'meta';
-      const who = document.createElement('strong'); who.textContent = m.username || m.user_id || ('user'+(m.user_id||''));
-      const time = document.createElement('span'); time.className = 'time'; time.textContent = m.created_at ? (new Date(m.created_at).toLocaleString()) : '';
-      meta.appendChild(who); meta.appendChild(document.createTextNode(' ')); meta.appendChild(time);
-      const body = document.createElement('div'); body.className = 'body'; body.textContent = m.text || '';
-      wrap.appendChild(meta); wrap.appendChild(body);
-      return wrap;
-    }catch(e){ console.warn('appendMessage failed', e); const r = document.createElement('div'); r.textContent = m && (m.text || JSON.stringify(m)) || ''; return r; }
-  }
-
-  // Load unread summary from server and update badges
-  async function loadUnreadSummary(){
-    const data = await fetchJSON('/notifications/unread-summary');
-    if(!data) return;
-    const roomMap = {};
-    (data.rooms||[]).forEach(r=>{ roomMap[String(r.room_id)] = r.unread_count; });
-    const dialogsMap = {};
-    (data.dialogs||[]).forEach(d=>{ dialogsMap[String(d.other_id)] = d.unread_count; });
-    // update room badges
-    Array.from(roomsList.children).forEach(li=>{
-      const id = li.dataset.id;
-      const badge = li.querySelector('.unread-badge');
-      const count = roomMap[String(id)] || 0;
-      if(badge){ badge.textContent = String(count); badge.classList.toggle('hidden', count===0); }
-    });
-    // update contact/dialog badges
-    Array.from(contactsList.children).forEach(li=>{
-      const id = li.dataset.id;
-      const badge = li.querySelector('.unread-badge');
-      const count = dialogsMap[String(id)] || 0;
-      if(badge){ badge.textContent = String(count); badge.classList.toggle('hidden', count===0); }
-    });
-    // update aggregated unread total in header if present
-    try{
-      const total = (data.rooms||[]).reduce((s,r)=>s + (r.unread_count||0), 0) + (data.dialogs||[]).reduce((s,d)=>s + (d.unread_count||0), 0);
-      const btn = document.getElementById('unread-total');
-      const live = document.getElementById('unread-live');
-      if(btn){
-        // Always display the unread total. When zero, apply a muted style instead of hiding.
-        btn.classList.toggle('muted', total === 0);
-        btn.removeAttribute('aria-hidden');
-        btn.innerHTML = `<span class="unread-icon">📨</span><span class="unread-count">${total}</span>`;
-        let inlineBadge = btn.parentNode.querySelector('.unread-badge-inline');
-        if(!inlineBadge){ inlineBadge = document.createElement('span'); inlineBadge.className = 'unread-badge-inline'; btn.parentNode.appendChild(inlineBadge); }
-        inlineBadge.textContent = total > 99 ? '99+' : String(total);
-        inlineBadge.style.display = total > 0 ? 'inline-block' : 'none';
-        if(live) live.textContent = `You have ${total} unread messages`;
-      }
-    }catch(e){ console.warn('loadUnreadSummary failed', e); }
-  }
-
   // autoscroll logic: only auto-scroll when user is at or near bottom
-  let autoscroll = true;
+  window.autoscroll = true;
   function userIsAtBottom(){
     const threshold = 40; // px
-    return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < threshold;
+    try{ return window.messagesEl.scrollHeight - window.messagesEl.scrollTop - window.messagesEl.clientHeight < threshold; }catch(e){ return true; }
   }
-  messagesEl.addEventListener('scroll', ()=>{
+  try{ window.messagesEl.addEventListener('scroll', ()=>{
     // if user scrolls up, disable autoscroll
-    autoscroll = userIsAtBottom();
+    window.autoscroll = userIsAtBottom();
     // infinite scroll trigger: when near top, load older messages
-    if(messagesEl.scrollTop < 50 && currentRoom){
-      // load older messages
-      if(isDialog){
-        loadDialogMessages(currentRoom.id, {before: earliestTimestamp, prepend: true});
-      } else {
-        loadRoomMessages(currentRoom.id, {before: earliestTimestamp, prepend: true});
+    try{
+      if(window.messagesEl.scrollTop < 50 && currentRoom){
+        // load older messages
+        if(isDialog){
+          loadDialogMessages(currentRoom.id, {before: window.earliestTimestamp, prepend: true});
+        } else {
+          loadRoomMessages(currentRoom.id, {before: window.earliestTimestamp, prepend: true});
+        }
       }
-    }
-  });
+    }catch(e){}
+  }); }catch(e){}
 
   // track earliest message timestamp currently rendered for infinite scroll
-  let earliestTimestamp = null;
-  let latestTimestamp = null;
+  // expose timestamps to extracted rooms module
+  try{ window.earliestTimestamp = null; window.latestTimestamp = null; }catch(e){}
 
   composer.addEventListener('submit', (e)=>{
-    e.preventDefault();
-    try{ 
-      lastLocalSendAt = Date.now(); 
-      // subtle local pulse to acknowledge the user's send
-      const btn = document.getElementById('unread-total');
-      if(btn){ btn.classList.remove('pulse-local'); void btn.offsetWidth; btn.classList.add('pulse-local'); setTimeout(()=>btn.classList.remove('pulse-local'), 600); }
-    }catch(e){}
-    const text = input.value.trim();
-    const composerEl = document.getElementById('composer');
-    const replyTo = composerEl.dataset.replyTo || null;
-    const fileEl = document.getElementById('file-input');
-    const fileSelected = fileEl && fileEl.files && fileEl.files.length > 0;
-    if(!text && !fileSelected) return;
-  // create a pending placeholder instead of optimistic duplicate append
-  const placeholder = document.createElement('div');
-  placeholder.className = 'message pending me';
-  const phMeta = document.createElement('div'); phMeta.className='meta'; phMeta.textContent = 'you';
-  const phBody = document.createElement('div'); phBody.className='body'; phBody.textContent = text || '';
-  placeholder.appendChild(phMeta);
-  placeholder.appendChild(phBody);
-  // controls for retry/cancel
-  const controls = document.createElement('div'); controls.className='controls';
-  const status = document.createElement('span'); status.className='status';
-  controls.appendChild(status);
-  const retryBtn = document.createElement('button'); retryBtn.type='button'; retryBtn.textContent='Retry';
-  const cancelBtn = document.createElement('button'); cancelBtn.type='button'; cancelBtn.textContent='Cancel';
-  controls.appendChild(retryBtn);
-  controls.appendChild(cancelBtn);
-  placeholder.appendChild(controls);
-  messagesEl.appendChild(placeholder);
-  if(autoscroll) messagesEl.scrollTop = messagesEl.scrollHeight;
-    // prepare payload
-    const payload = { text };
-    if(replyTo) payload.reply_to = Number(replyTo);
-    input.value = '';
-    if(!currentRoom) return;
-    // If a file is selected, perform atomic upload using messages_with_file endpoint with progress
-    if(fileSelected){
-      const file = fileEl.files[0];
-      const fd = new FormData();
-      fd.append('text', text);
-      if(replyTo) fd.append('reply_to', replyTo);
-      fd.append('file', file, file.name);
-      // per-attachment progress element
-      const progressWrap = document.createElement('div'); progressWrap.className='attachment-progress';
-      progressWrap.textContent = `Uploading ${file.name}: `;
-      const prog = document.createElement('progress'); prog.max = 100; prog.value = 0; progressWrap.appendChild(prog);
-      messagesEl.appendChild(progressWrap);
-      const url = isDialog ? `/dialogs/${currentRoom.id}/messages_with_file` : `/rooms/${currentRoom.id}/messages_with_file`;
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', url);
-      xhr.onload = function(){
-        try{
-          const json = JSON.parse(xhr.responseText);
-          if(json && json.message){
-            // construct full message object including files
-            const fullMsg = Object.assign({}, json.message);
-            if(json.file) fullMsg.files = [json.file];
-            const el2 = appendMessage(fullMsg);
-            // replace placeholder with the real message element
-            messagesEl.replaceChild(el2, placeholder);
-            latestTimestamp = json.message.created_at || latestTimestamp;
-          }
-        }catch(e){ console.error('parse response', e); }
-        progressWrap.remove();
-      };
-  xhr.onerror = function(){ showToast('Upload failed', 'error'); progressWrap.remove(); };
-      // on network error: mark placeholder as failed and show retry/cancel
-      xhr.addEventListener('error', ()=>{
-        if(placeholder){
-          placeholder.classList.add('failed');
-          status.textContent = 'Failed';
-          showToast('Upload failed', 'error');
-        }
-      });
-      xhr.upload.onprogress = function(ev){ if(ev.lengthComputable){ const pct = Math.round((ev.loaded/ev.total)*100); prog.value = pct; } };
-      xhr.send(fd);
-      // wire retry / cancel handlers
-      retryBtn.addEventListener('click', ()=>{
-        // clear failed state and re-send
-        if(placeholder) placeholder.classList.remove('failed');
-        status.textContent = '';
-        // re-send by triggering the same XHR logic again (simple approach: reload page to re-run flow)
-        // better approach: encapsulate send logic in a function; for now, re-submit by programmatically clicking send
-        composer.querySelector('button[type=submit]').click();
-      });
-      cancelBtn.addEventListener('click', ()=>{ if(placeholder && placeholder.parentNode) placeholder.parentNode.removeChild(placeholder); });
-    } else {
-      if(isDialog){
-        fetch(`/dialogs/${currentRoom.id}/messages`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)})
-          .then(r=>r.json())
-          .then(json=>{
-            if(json && json.message){
-              const fullMsg = Object.assign({}, json.message);
-              const el2 = appendMessage(fullMsg);
-              messagesEl.replaceChild(el2, placeholder);
-              latestTimestamp = json.message.created_at || latestTimestamp;
-              if(autoscroll) messagesEl.scrollTop = messagesEl.scrollHeight;
-            }
-          }).catch(err=>{ console.error('send dialog message failed', err); // remove placeholder on error
-            if(placeholder && placeholder.parentNode) placeholder.parentNode.removeChild(placeholder);
-          });
-      } else {
-        fetch(`/rooms/${currentRoom.id}/messages`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)})
-          .then(r=>r.json())
-          .then(json=>{
-            if(json && json.message){
-              const fullMsg = Object.assign({}, json.message);
-              const el2 = appendMessage(fullMsg);
-              messagesEl.replaceChild(el2, placeholder);
-              latestTimestamp = json.message.created_at || latestTimestamp;
-              if(autoscroll) messagesEl.scrollTop = messagesEl.scrollHeight;
-            }
-          }).catch(err=>{ console.error('send room message failed', err); if(placeholder && placeholder.parentNode) placeholder.parentNode.removeChild(placeholder); });
-      }
-    }
-    // clear reply state
-    const replyPreviewEl = document.getElementById('reply-preview');
-    if(replyPreviewEl) replyPreviewEl.style.display = 'none';
-    delete composerEl.dataset.replyTo;
+    try{ if(window && typeof window.handleComposerSubmit === 'function') return window.handleComposerSubmit(e); }catch(err){ try{ e.preventDefault(); }catch(e){} }
   });
 
   // handle Shift+Enter for newline in textarea
@@ -406,130 +159,23 @@ document.addEventListener('DOMContentLoaded', ()=>{
     });
   }
 
-  // helper: basic fetch wrapper
+  // helper: delegate to extracted API module if present
   async function fetchJSON(url, opts){
-    try{
-      // default to sending cookies for same-origin authenticated endpoints
-      opts = opts || {};
-      if(typeof opts.credentials === 'undefined') opts.credentials = 'include';
-      // ensure headers object exists
-      opts.headers = opts.headers || {};
-      try{ // allow tests to inject a bearer token into window.__AUTH_TOKEN which will be used for Authorization
-        if(typeof window !== 'undefined' && window.__AUTH_TOKEN && !opts.headers['Authorization']){
-          opts.headers['Authorization'] = 'Bearer ' + window.__AUTH_TOKEN;
-        }
-      }catch(e){}
-      const r = await fetch(url, opts);
-      if(!r.ok){
-        console.warn('fetch failed', url, r.status);
-        return null;
-      }
-      // try to parse JSON, but return null on parse errors
-      const json = await r.json().catch(()=>null);
-      return json;
-    }catch(e){ console.warn('fetchJSON failed', e); return null; }
+    try{ if(window && typeof window.fetchJSON === 'function') return await window.fetchJSON(url, opts); }catch(e){}
+    // fallback minimal implementation
+    try{ opts = opts || {}; if(typeof opts.credentials === 'undefined') opts.credentials = 'include'; opts.headers = opts.headers || {}; const r = await fetch(url, opts); if(!r.ok) return null; return await r.json().catch(()=>null); }catch(e){ console.warn('fetchJSON fallback failed', e); return null; }
   }
 
-  async function loadRooms(){
-    const data = await fetchJSON('/rooms');
-    if(data && data.rooms){
-      rooms = data.rooms;
-      renderRooms();
-      if(rooms.length) {
-        // Tests may set window.__TEST_SKIP_AUTOSELECT to prevent automatic room open
-        if(!(typeof window !== 'undefined' && window.__TEST_SKIP_AUTOSELECT)) selectRoom(rooms[0]);
-      }
-    }
-  }
+  // delegate to extracted rooms module when available
+  async function loadRooms(){ try{ if(window && typeof window.loadRooms === 'function') return await window.loadRooms(); }catch(e){} }
 
-  async function loadContacts(){
-    const data = await fetchJSON('/friends');
-    if(data && data.friends){
-      contacts = data.friends.map(f=>({id: f.id, name: f.username || f.email || ('user'+f.id)}));
-      renderContacts();
-    }
-  }
+  async function loadContacts(){ try{ if(window && typeof window.loadContacts === 'function') return await window.loadContacts(); }catch(e){} }
 
-  async function loadRoomMembers(roomId){
-    const data = await fetchJSON(`/rooms/${roomId}`);
-    if(!data || !data.room) return renderMembers([]);
-    const memberIds = data.room.members || [];
-    if(memberIds.length === 0) return renderMembers([]);
-    // batch presence and user lookup
-    const idsParam = memberIds.join(',');
-    const [presResp, usersResp] = await Promise.all([
-      fetchJSON(`/presence?ids=${encodeURIComponent(idsParam)}`),
-      fetchJSON(`/users?ids=${encodeURIComponent(idsParam)}`)
-    ]);
-    const statuses = (presResp && presResp.statuses) || {};
-    const users = (usersResp && usersResp.users) || [];
-    const nameById = {};
-    users.forEach(u => { nameById[String(u.id)] = u.username || u.email || ('user' + u.id); });
-    const members = memberIds.map(id => ({ name: nameById[String(id)] || ('user ' + id), online: statuses[String(id)] === 'online' }));
-    renderMembers(members);
-  }
+  async function loadRoomMembers(roomId){ try{ if(window && typeof window.loadRoomMembers === 'function') return await window.loadRoomMembers(roomId); }catch(e){} }
 
-  async function loadRoomMessages(roomId, opts){
-    opts = opts || {};
-    const before = opts.before ? `?before=${encodeURIComponent(opts.before)}` : '';
-    const data = await fetchJSON(`/rooms/${roomId}/messages${before}`);
-    if(!data || !data.messages) return;
-    // if prepend: preserve scroll position
-    if(opts.prepend){
-      const oldScrollHeight = messagesEl.scrollHeight;
-      const frag = document.createDocumentFragment();
-      data.messages.forEach(m=>{
-        // pass the full message object so appendMessage can access id, reply, files, etc.
-        const el = appendMessage(m);
-        frag.insertBefore(el, frag.firstChild);
-        earliestTimestamp = earliestTimestamp ? Math.min(earliestTimestamp, m.created_at) : m.created_at;
-      });
-      messagesEl.insertBefore(frag, messagesEl.firstChild);
-      // restore scroll position to where the user was
-      const newScrollHeight = messagesEl.scrollHeight;
-      messagesEl.scrollTop = newScrollHeight - oldScrollHeight + messagesEl.scrollTop;
-    } else {
-      messagesEl.innerHTML = '';
-      data.messages.forEach(m=>{
-        const el = appendMessage(m);
-        messagesEl.appendChild(el);
-        earliestTimestamp = earliestTimestamp ? Math.min(earliestTimestamp, m.created_at) : m.created_at;
-        latestTimestamp = m.created_at || latestTimestamp;
-      });
-      // initial load: scroll to bottom
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-      autoscroll = true;
-    }
-  }
+  async function loadRoomMessages(roomId, opts){ try{ if(window && typeof window.loadRoomMessages === 'function') return await window.loadRoomMessages(roomId, opts); }catch(e){} }
 
-  async function loadDialogMessages(otherId, opts){
-    opts = opts || {};
-    const before = opts.before ? `?before=${encodeURIComponent(opts.before)}` : '';
-    const data = await fetchJSON(`/dialogs/${otherId}/messages${before}`);
-    if(!data || !data.messages) return;
-    if(opts.prepend){
-      const oldScrollHeight = messagesEl.scrollHeight;
-      const frag = document.createDocumentFragment();
-      data.messages.forEach(m=>{
-        const el = appendMessage(m);
-        frag.insertBefore(el, frag.firstChild);
-        earliestTimestamp = earliestTimestamp ? Math.min(earliestTimestamp, m.created_at) : m.created_at;
-      });
-      messagesEl.insertBefore(frag, messagesEl.firstChild);
-      const newScrollHeight = messagesEl.scrollHeight;
-      messagesEl.scrollTop = newScrollHeight - oldScrollHeight + messagesEl.scrollTop;
-    } else {
-      messagesEl.innerHTML = '';
-      data.messages.forEach(m=>{
-        const el = appendMessage(m);
-        messagesEl.appendChild(el);
-        earliestTimestamp = earliestTimestamp ? Math.min(earliestTimestamp, m.created_at) : m.created_at;
-        latestTimestamp = m.created_at || latestTimestamp;
-      });
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-      autoscroll = true;
-    }
-  }
+  async function loadDialogMessages(otherId, opts){ try{ if(window && typeof window.loadDialogMessages === 'function') return await window.loadDialogMessages(otherId, opts); }catch(e){} }
 
   // bootstrap auth via /refresh; if unauthenticated redirect to login page
   async function bootstrap(){
@@ -546,68 +192,14 @@ document.addEventListener('DOMContentLoaded', ()=>{
       if(user){
         const ui = document.getElementById('user-info');
         if(ui){
-          // render avatar initial, name and a dropdown trigger
-          const display = escapeHtml(user.username || user.email || ('user'+user.id));
-          ui.innerHTML = `
-            <div class="user-dropdown">
-              <div class="user-toggle" id="user-toggle" tabindex="0">
-                <span class="avatar">${escapeHtml((user.username||user.email||'U').charAt(0).toUpperCase())}</span>
-                <strong>${display}</strong>
-                ${user.is_admin? '<span class="badge">admin</span>':''}
-              </div>
-              <div class="dropdown-panel" id="user-panel" style="display:none">
-                <h4>Sessions</h4>
-                <ul class="sessions-list" id="sessions-list"><li class="meta">Loading…</li></ul>
-                <div style="margin-top:8px;display:flex;gap:8px;justify-content:space-between">
-                  <button id="btn-logout-inline" type="button">Logout</button>
-                  <button id="btn-refresh-sessions" type="button">Refresh</button>
-                </div>
-              </div>
-            </div>
-          `;
-          // wire toggle and inline logout
-          const toggle = document.getElementById('user-toggle');
-          const panel = document.getElementById('user-panel');
-          const sessionsList = document.getElementById('sessions-list');
-          const refreshBtn = document.getElementById('btn-refresh-sessions');
-          const inlineLogout = document.getElementById('btn-logout-inline');
-          function closePanel(){ if(panel) panel.style.display='none'; }
-          function openPanel(){ if(panel) panel.style.display='block'; loadSessions(); }
-          toggle.addEventListener('click', ()=>{ if(panel.style.display==='block') closePanel(); else openPanel(); });
-          refreshBtn.addEventListener('click', ()=> loadSessions());
-          inlineLogout.addEventListener('click', async ()=>{ try{ await fetch('/logout', {method:'POST', credentials:'include'}); }catch(e){} location.href='/static/auth/login.html'; });
-
-          async function loadSessions(){
-            sessionsList.innerHTML = '<li class="meta">Loading…</li>';
-            try{
-              const data = await fetchJSON('/sessions');
-              if(!data || !data.sessions) return sessionsList.innerHTML = '<li class="meta">No sessions</li>';
-              sessionsList.innerHTML = '';
-              data.sessions.forEach(s => {
-                const li = document.createElement('li');
-                const meta = document.createElement('div'); meta.className='meta'; meta.textContent = `jti: ${s.jti} • last active: ${new Date((s.last_active||s.created_at||0)*1000).toLocaleString()}`;
-                const btn = document.createElement('button'); btn.type='button'; btn.textContent='Revoke';
-                btn.addEventListener('click', async ()=>{
-                  // nicer modal confirmation instead of native confirm
-                  const ok = await showModal({title:'Revoke session', body:'Revoke this session? This will immediately log out that session.', confirmText:'Revoke', cancelText:'Keep'});
-                  if(!ok) return;
-                  try{
-                    btn.disabled = true;
-                    const r = await fetch('/sessions/revoke', {method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({jti: s.jti})});
-                    if(r && r.ok){
-                      li.style.transition = 'opacity 220ms'; li.style.opacity = '0';
-                      setTimeout(()=>{ li.remove(); showToast('Session revoked', 'success'); }, 260);
-                    } else {
-                      btn.disabled = false; showToast('Failed to revoke session', 'error');
-                    }
-                  }catch(e){ console.warn('revoke failed', e); btn.disabled = false; showToast('Failed to revoke session', 'error'); }
-                });
-                li.appendChild(meta); li.appendChild(btn); sessionsList.appendChild(li);
-              });
-            }catch(e){ sessionsList.innerHTML = '<li class="meta">Error loading sessions</li>'; }
-          }
-          // show admin button when user is admin
-          try{ const adminBtn = document.getElementById('admin-open'); if(adminBtn) adminBtn.style.display = user.is_admin ? 'inline-flex' : 'none'; }catch(e){}
+          try{
+            if(window && typeof window.renderUserInfo === 'function'){
+              window.renderUserInfo(user);
+            } else {
+              // minimal fallback
+              ui.textContent = escapeHtml(user.username || user.email || ('user'+user.id));
+            }
+          }catch(e){ console.warn('renderUserInfo failed', e); }
         }
       }
     }catch(e){ console.warn('refresh parse failed', e); }
@@ -623,89 +215,46 @@ document.addEventListener('DOMContentLoaded', ()=>{
     return String(str).replace(/[&<>"']/g, (s)=>({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":"&#39;" }[s]));
   }
 
-  // Modal utility: returns a Promise<boolean>
-  function showModal(opts){
-    // ensure modal root exists (should be created on DOMContentLoaded, but guard here)
-    let root = document.getElementById('modal-root');
-    if(!root){ try{ root = document.createElement('div'); root.id = 'modal-root'; document.body.appendChild(root); }catch(e){} }
-    return new Promise((resolve)=>{
-      root.innerHTML = '';
-      const previouslyFocused = document.activeElement;
-      const backdrop = document.createElement('div'); backdrop.className = 'modal-backdrop';
-      const box = document.createElement('div'); box.className = 'modal-box';
-      const title = document.createElement('h3');
-      const titleId = 'modal-title-' + Math.random().toString(36).slice(2,9);
-      title.id = titleId;
-      title.textContent = opts.title || 'Confirm';
-  const body = document.createElement('div'); body.className = 'modal-body'; body.innerHTML = `${escapeHtml(opts.body || '')}`;
-  const actions = document.createElement('div'); actions.className = 'modal-actions';
-  const cancel = document.createElement('button'); cancel.type='button'; cancel.textContent = opts.cancelText || t('cancel');
-  const confirm = document.createElement('button'); confirm.type='button'; confirm.textContent = opts.confirmText || t('ok'); confirm.className='confirm';
-      actions.appendChild(cancel); actions.appendChild(confirm);
-      box.appendChild(title); box.appendChild(body); box.appendChild(actions);
-      // accessibility
-      box.setAttribute('role', 'dialog');
-      box.setAttribute('aria-modal', 'true');
-      box.setAttribute('aria-labelledby', titleId);
-      backdrop.appendChild(box);
-      root.appendChild(backdrop);
-
-      // focus management / trap
-      const focusable = [confirm, cancel];
-      let focusIndex = 0;
-      function focusFirst(){ focusIndex = 0; focusable[focusIndex].focus(); }
-      function handleKey(e){
-        if(e.key === 'Escape'){
-          e.preventDefault(); cleanup(); resolve(false);
-        } else if(e.key === 'Tab'){
-          // simple two-element trap
-          e.preventDefault();
-          if(e.shiftKey) focusIndex = (focusIndex - 1 + focusable.length) % focusable.length;
-          else focusIndex = (focusIndex + 1) % focusable.length;
-          focusable[focusIndex].focus();
-        }
+  // Minimal shims that delegate to the rooms module. Keeping tiny shims here preserves
+  // compatibility when scripts load in different orders and keeps app.js small.
+  function selectRoom(roomOrId){ try{ if(window && window.roomsApi && typeof window.roomsApi.selectRoom === 'function') return window.roomsApi.selectRoom(roomOrId); if(window && typeof window.selectRoom === 'function' && window.selectRoom !== selectRoom) return window.selectRoom(roomOrId); }catch(e){}
+    // best-effort fallback: set currentRoom and call generic loader
+    try{
+      let room = roomOrId;
+      if(!room) return;
+      if(typeof roomOrId === 'number' || typeof roomOrId === 'string'){
+        room = (window.rooms||[]).find(r => String(r.id) === String(roomOrId)) || { id: roomOrId };
       }
-
-      function cleanup(){
-        root.innerHTML = '';
-        document.removeEventListener('keydown', handleKey);
-        try{ if(previouslyFocused && previouslyFocused.focus) previouslyFocused.focus(); }catch(e){}
-      }
-
-      cancel.addEventListener('click', ()=>{ cleanup(); resolve(false); });
-      backdrop.addEventListener('click', (e)=>{ if(e.target === backdrop){ cleanup(); resolve(false); } });
-      confirm.addEventListener('click', ()=>{ cleanup(); resolve(true); });
-
-      // wire key handler and initial focus
-      document.addEventListener('keydown', handleKey);
-      // wait a tick then focus the confirm button for quick confirmation via keyboard
-      setTimeout(()=>{ try{ confirm.focus(); }catch(e){} }, 0);
-    });
+      window.currentRoom = room;
+      window.isDialog = !!room.is_dialog || false;
+      try{ if(roomTitle) roomTitle.textContent = room.name || room.other_name || (window.isDialog ? 'Dialog' : 'Room'); }catch(e){}
+      try{ if(window.messagesEl) window.messagesEl.innerHTML = ''; }catch(e){}
+      try{ if(window.isDialog) loadDialogMessages(room.id); else loadRoomMessages(room.id); }catch(e){}
+    }catch(e){}
   }
 
-  // Toast utility
+  function openDialog(otherId){ try{ if(window && window.roomsApi && typeof window.roomsApi.selectRoom === 'function') return window.roomsApi.selectRoom({ id: otherId, other_id: otherId, is_dialog: true, name: null }); return selectRoom({ id: otherId, other_id: otherId, is_dialog: true, name: null }); }catch(e){} }
+
+  function renderRooms(){ try{ if(window && window.roomsApi && typeof window.roomsApi.renderRooms === 'function') return window.roomsApi.renderRooms(); }catch(e){}
+    try{ if(!roomsList) return; roomsList.innerHTML = ''; (window.rooms||[]).forEach(r=>{ const li = document.createElement('li'); li.dataset.id = String(r.id); li.textContent = r.name || ('room'+r.id); li.addEventListener('click', ()=> selectRoom(r)); roomsList.appendChild(li); }); }catch(e){} }
+
+  function renderContacts(){ try{ if(window && window.roomsApi && typeof window.roomsApi.renderContacts === 'function') return window.roomsApi.renderContacts(); }catch(e){}
+    try{ if(!contactsList) return; contactsList.innerHTML = ''; (window.contacts||[]).forEach(c=>{ const li = document.createElement('li'); li.dataset.id = String(c.id); li.textContent = c.name || ('user'+c.id); li.addEventListener('click', ()=> openDialog(c.id)); contactsList.appendChild(li); }); }catch(e){} }
+
+  function renderMembers(membersArr){ try{ if(window && window.roomsApi && typeof window.roomsApi.renderMembers === 'function') return window.roomsApi.renderMembers(membersArr); }catch(e){}
+    try{ if(!membersList) return; membersList.innerHTML = ''; (membersArr||[]).forEach(m=>{ const li = document.createElement('li'); li.textContent = `${m.name || m.id}${m.online ? ' (online)' : ''}`; membersList.appendChild(li); }); }catch(e){} }
+
+  // delegate to centralized UI helpers (if the new ui.js is present it exposes window.showModal/window.showToast)
+  function showModal(opts){
+    try{ if(window && typeof window.showModal === 'function') return window.showModal(opts); }catch(e){}
+    // fallback: simple confirm-like Promise
+    return new Promise((resolve)=>{ try{ const ok = confirm(opts && opts.body ? opts.body : (opts && opts.title) || 'Confirm?'); resolve(Boolean(ok)); }catch(e){ resolve(false); } });
+  }
+
   function showToast(msg, type='success', timeout=3000){
-    let root = document.getElementById('toast-root');
-    if(!root){
-      try{
-        root = document.createElement('div'); root.id = 'toast-root'; document.body.appendChild(root);
-      }catch(e){ console.warn('toast fallback:', msg); return; }
-    }
-    if(!root.querySelector('.toast-container')){
-      const cont = document.createElement('div'); cont.className='toast-container';
-      // accessibility: polite live region for toasts
-      cont.setAttribute('role', 'status');
-      cont.setAttribute('aria-live', 'polite');
-      cont.setAttribute('aria-atomic', 'false');
-      root.appendChild(cont);
-    }
-    const cont = root.querySelector('.toast-container');
-    const t = document.createElement('div'); t.className = 'toast ' + (type==='success'? 'success': (type==='error'? 'error':''));
-    t.textContent = msg;
-    // each toast should be perceived by assistive tech
-    t.setAttribute('role', 'status');
-    cont.appendChild(t);
-    setTimeout(()=>{ t.style.opacity='0'; t.style.transform='translateY(8px)'; setTimeout(()=>t.remove(), 240); }, timeout);
+    try{ if(window && typeof window.showToast === 'function'){ return window.showToast(msg, type, timeout); } }catch(e){}
+    // fallback minimal implementation
+    try{ const rt = document.getElementById('toast-root') || (function(){ const r=document.createElement('div'); r.id='toast-root'; document.body.appendChild(r); return r; })(); const cont = rt.querySelector('.toast-container') || (function(){ const c=document.createElement('div'); c.className='toast-container'; rt.appendChild(c); return c; })(); const t = document.createElement('div'); t.className='toast'; t.textContent = msg; cont.appendChild(t); setTimeout(()=>t.remove(), timeout); }catch(e){ console.warn('showToast fallback failed', msg); }
   }
 
   // wire logout button
@@ -720,6 +269,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
     });
   }
 
+  // expose UI hooks for extracted modules (rooms.js expects these on window)
+  try{ window.selectRoom = selectRoom; window.openDialog = openDialog; window.renderRooms = renderRooms; window.renderContacts = renderContacts; window.renderMembers = renderMembers; }catch(e){}
   bootstrap();
 
   roomsToggle.addEventListener('click', ()=>{
