@@ -21,7 +21,7 @@ test('admin filters update user list', async ({ browser }) => {
   const context = await browser.newContext();
   await context.addCookies([{ name: 'token', value: admin.token, domain: '127.0.0.1', path: '/' }]);
   const page = await context.newPage();
-  await page.goto(`${BASE}/static/admin.html`);
+  await page.goto(`${BASE}/static/admin/index.html`);
 
   // wait for users table to appear
   await page.waitForSelector('.admin-list');

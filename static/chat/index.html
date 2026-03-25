@@ -7,30 +7,7 @@
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <header class="topmenu">
-    <div class="brand">Chat Demo</div>
-    <nav class="topnav">
-      <div class="nav-left">
-        <a href="/static/home.html" class="btn btn-secondary" id="btn-home">Home</a>
-        <a href="/static/admin.html" class="btn" id="btn-admin-link">Admin</a>
-        <button id="btn-new-room" class="btn btn-primary">New Room</button>
-      </div>
-
-      <div id="user-info" class="user-info" aria-live="polite">
-        <!-- populated by app.js when user is authenticated -->
-      </div>
-
-      <div id="notifications" class="nav-notifications">
-        <button id="unread-total" class="unread-total" title="Unread notifications" aria-live="polite" aria-atomic="true"><span class="unread-icon">📨</span><span class="unread-count">0</span></button>
-        <span id="unread-live" class="sr-only" aria-live="polite"></span>
-      </div>
-
-      <div class="nav-actions">
-  <button id="admin-open" class="btn" style="display:none">Admin panel</button>
-        <button id="btn-logout" class="btn">Logout</button>
-      </div>
-    </nav>
-  </header>
+  <div id="shared-header-placeholder"></div>
 
   <div class="app-grid">
     <main class="messages-area">
@@ -71,8 +48,23 @@
     </aside>
   </div>
 
+  <script src="/static/site-config.js"></script>
+  <!-- load header fragment and visibility helper so pages include consistent header -->
+  <script src="/static/header/header-loader.js"></script>
+  <script src="/static/header/header-visibility.js"></script>
   <script src="/static/unread.js"></script>
+  <script src="/static/main.js"></script>
+  <script src="/static/app/api.js"></script>
+  <script src="/static/app/presence.js"></script>
+  <script src="/static/app/rooms.js"></script>
+  <script src="/static/app/messages.js"></script>
+  <script src="/static/app/ui.js"></script>
+  <script src="/static/app/sessions.js"></script>
   <script src="/static/app.js" defer></script>
+  <script>
+    // Ensure the home button uses the canonical href from SITE_CONFIG
+    try{ (function(){ var el = document.getElementById('btn-home'); if(el){ var h = (window.SITE_CONFIG && window.SITE_CONFIG.homeHref) ? window.SITE_CONFIG.homeHref : '/static/home.html'; el.setAttribute('href', h); } })(); }catch(e){}
+  </script>
   <div id="emoji-picker" class="emoji-picker" aria-hidden="true"></div>
   <div id="uploading-indicator" class="uploading-indicator">Uploading...</div>
   <div id="modal-root" aria-hidden="true"></div>

@@ -55,6 +55,10 @@ async def list_users(request: Request, user=Depends(require_admin)):
 
     where_clause = ('WHERE ' + ' AND '.join(where)) if where else ''
     offset = (page - 1) * per_page
+
+    q = qs.get('q')
+
+    q = qs.get('q')
     async with aiosqlite.connect(DB) as db:
         # total count for the filtered query
         count_q = f"SELECT COUNT(*) FROM users {where_clause}"
@@ -138,28 +142,138 @@ async def promote_user(request: Request, user=Depends(require_admin)):
 
 
 @router.get('/admin/rooms')
-async def list_rooms(user=Depends(require_admin)):
-    # return rooms with owner username and member counts to help admin UI
+async def list_rooms(request: Request, user=Depends(require_admin)):
+    """Return rooms with optional pagination: ?page=&per_page"""
+    qs = request.query_params
+    try:
+        page = int(qs.get('page', '1'))
+        if page < 1: page = 1
+    except Exception:
+        page = 1
+    try:
+        per_page = int(qs.get('per_page', '50'))
+        if per_page < 1: per_page = 50
+    except Exception:
+        per_page = 50
+
+    q = qs.get('q')
+    offset = (page - 1) * per_page
+
     async with aiosqlite.connect(DB) as db:
-        cur = await db.execute('''
-            SELECT r.id, r.owner_id, r.name, r.created_at, u.username,
-                   (SELECT COUNT(*) FROM memberships m WHERE m.room_id = r.id) as member_count
-            FROM rooms r LEFT JOIN users u ON r.owner_id = u.id
-            ORDER BY r.id ASC
-        ''')
+        # total count (respecting query if present)
+        if q:
+            if q.isdigit():
+                cur = await db.execute('SELECT COUNT(*) FROM rooms WHERE id = ?', (int(q),))
+            else:
+                cur = await db.execute('SELECT COUNT(*) FROM rooms WHERE name LIKE ?', (f'%{q}%',))
+        else:
+            cur = await db.execute('SELECT COUNT(*) FROM rooms')
+        total = (await cur.fetchone())[0]
+
+        if q:
+            if q.isdigit():
+                sql = '''
+                    SELECT r.id, r.owner_id, r.name, r.created_at, u.username,
+                           (SELECT COUNT(*) FROM memberships m WHERE m.room_id = r.id) as member_count
+                    FROM rooms r LEFT JOIN users u ON r.owner_id = u.id
+                    WHERE r.id = ?
+                    ORDER BY r.id ASC
+                    LIMIT ? OFFSET ?
+                '''
+                cur = await db.execute(sql, (int(q), per_page, offset))
+            else:
+                sql = '''
+                    SELECT r.id, r.owner_id, r.name, r.created_at, u.username,
+                           (SELECT COUNT(*) FROM memberships m WHERE m.room_id = r.id) as member_count
+                    FROM rooms r LEFT JOIN users u ON r.owner_id = u.id
+                    WHERE r.name LIKE ?
+                    ORDER BY r.id ASC
+                    LIMIT ? OFFSET ?
+                '''
+                cur = await db.execute(sql, (f'%{q}%', per_page, offset))
+        else:
+            sql = '''
+                SELECT r.id, r.owner_id, r.name, r.created_at, u.username,
+                       (SELECT COUNT(*) FROM memberships m WHERE m.room_id = r.id) as member_count
+                FROM rooms r LEFT JOIN users u ON r.owner_id = u.id
+                ORDER BY r.id ASC
+                LIMIT ? OFFSET ?
+            '''
+            cur = await db.execute(sql, (per_page, offset))
+
         rows = await cur.fetchall()
-        return {'rooms': [
+        rooms = [
             {'id': r[0], 'owner_id': r[1], 'name': r[2], 'created_at': r[3], 'owner_username': r[4], 'member_count': r[5]}
             for r in rows
-        ]}
+        ]
+
+    return {'rooms': rooms, 'total': total, 'page': page, 'per_page': per_page}
 
 
 @router.get('/admin/banned')
-async def list_banned(user=Depends(require_admin)):
+async def list_banned(request: Request, user=Depends(require_admin)):
+    """List banned users with optional pagination: ?page=&per_page="""
+    qs = request.query_params
+    try:
+        page = int(qs.get('page', '1'))
+        if page < 1:
+            page = 1
+    except Exception:
+        page = 1
+    try:
+        per_page = int(qs.get('per_page', '50'))
+        if per_page < 1:
+            per_page = 50
+    except Exception:
+        per_page = 50
+
+    offset = (page - 1) * per_page
+    # read optional search query
+    q = qs.get('q')
+
     async with aiosqlite.connect(DB) as db:
-        cur = await db.execute('SELECT b.id, b.banned_id, u.username, u.email, b.banner_id, b.created_at FROM bans b LEFT JOIN users u ON b.banned_id = u.id')
+        # total count for pager (respect q when present)
+        if q:
+            if q.isdigit():
+                cur = await db.execute('SELECT COUNT(*) FROM bans WHERE banned_id = ?', (int(q),))
+            else:
+                cur = await db.execute(
+                    'SELECT COUNT(*) FROM bans b LEFT JOIN users u ON b.banned_id = u.id WHERE u.username LIKE ? OR u.email LIKE ?',
+                    (f'%{q}%', f'%{q}%')
+                )
+        else:
+            cur = await db.execute('SELECT COUNT(*) FROM bans')
+        total = (await cur.fetchone())[0]
+
+        # apply optional search q to bans
+        if q:
+            if q.isdigit():
+                cur = await db.execute(
+                    'SELECT b.id, b.banned_id, u.username, u.email, b.banner_id, b.created_at '
+                    'FROM bans b LEFT JOIN users u ON b.banned_id = u.id '
+                    'WHERE b.banned_id = ? '
+                    'ORDER BY b.id DESC LIMIT ? OFFSET ?', (int(q), per_page, offset)
+                )
+            else:
+                cur = await db.execute(
+                    'SELECT b.id, b.banned_id, u.username, u.email, b.banner_id, b.created_at '
+                    'FROM bans b LEFT JOIN users u ON b.banned_id = u.id '
+                    'WHERE u.username LIKE ? OR u.email LIKE ? '
+                    'ORDER BY b.id DESC LIMIT ? OFFSET ?', (f'%{q}%', f'%{q}%', per_page, offset)
+                )
+        else:
+            cur = await db.execute(
+                'SELECT b.id, b.banned_id, u.username, u.email, b.banner_id, b.created_at '
+                'FROM bans b LEFT JOIN users u ON b.banned_id = u.id '
+                'ORDER BY b.id DESC LIMIT ? OFFSET ?', (per_page, offset)
+            )
         rows = await cur.fetchall()
-        return {'banned': [{'id': r[0], 'banned_id': r[1], 'username': r[2], 'email': r[3], 'banner_id': r[4], 'created_at': r[5]} for r in rows]}
+        banned = [
+            {'id': r[0], 'banned_id': r[1], 'username': r[2], 'email': r[3], 'banner_id': r[4], 'created_at': r[5]}
+            for r in rows
+        ]
+
+    return {'banned': banned, 'total': total, 'page': page, 'per_page': per_page}
 
 
 @router.post('/admin/ban_user')

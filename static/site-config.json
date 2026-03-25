@@ -1,0 +1,8 @@
+{
+  "mainHref": "/static/chat/index.html",
+  "adminHref": "/static/admin/index.html",
+  "homeHref": "/static/home.html",
+  "mainButtonText": "Chat",
+  "adminButtonText": "Admin",
+  "brand": "Presence demo"
+}

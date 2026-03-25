@@ -2,7 +2,7 @@ const { test, expect } = require('@playwright/test');
 
 // This test ensures that when login fails, the polished alert modal appears and keyboard works
 test('login failure shows alert modal and responds to keyboard (focus trapping)', async ({ page }) => {
-  await page.goto('http://127.0.0.1:8000/static/login.html');
+  await page.goto('http://127.0.0.1:8000/static/auth/login.html');
   // submit credentials that don't exist to cause failure
   await page.fill('#email', `noone+${Date.now()}@example.com`);
   await page.fill('#password', 'bad');

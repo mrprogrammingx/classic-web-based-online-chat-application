@@ -20,6 +20,16 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 .topnav .nav-left a.btn:focus{outline:3px solid rgba(43,144,255,0.12);outline-offset:2px}
 .topnav .nav-left a.btn.active-nav, .topnav .nav-left a.btn[aria-current="page"]{background:var(--accent);color:#fff;border-color:transparent;box-shadow:0 10px 30px rgba(43,144,255,0.12);transform:none}
 
+/* Enhanced active styling: subtle icon, animated underline and optional pulse */
+.topnav .nav-left a.btn.btn-primary{position:relative;overflow:hidden;background:linear-gradient(90deg,var(--accent), #1f7fdc);color:#fff;border-color:transparent;box-shadow:0 10px 30px rgba(43,144,255,0.12)}
+.topnav .nav-left a.btn.btn-primary::before{content:'★';display:inline-block;margin-right:8px;font-size:14px;opacity:0.95;transform:translateY(0);transition:transform 200ms ease, opacity 200ms}
+.topnav .nav-left a.btn.btn-primary::after{content:'';position:absolute;left:0;bottom:0;height:3px;width:100%;background:rgba(255,255,255,0.18);transform:scaleX(0);transform-origin:left;transition:transform 280ms cubic-bezier(.2,.9,.2,1)}
+.topnav .nav-left a.btn.btn-primary:hover::before{transform:translateY(-2px) scale(1.05)}
+.topnav .nav-left a.btn.btn-primary.active-nav::after, .topnav .nav-left a.btn.btn-primary[aria-current="page"]::after{transform:scaleX(1)}
+.topnav .nav-left a.btn.btn-primary.active-nav{animation:active-pulse 2200ms ease-in-out infinite}
+
+@keyframes active-pulse{0%{box-shadow:0 8px 20px rgba(43,144,255,0.12)}50%{box-shadow:0 18px 44px rgba(43,144,255,0.14)}100%{box-shadow:0 8px 20px rgba(43,144,255,0.12)}}
+
 /* Admin action styling - more distinct outline/pill */
 .nav-actions #admin-open{padding:6px 12px;border-radius:999px;border:1px solid rgba(43,144,255,0.16);background:linear-gradient(180deg,rgba(255,255,255,0.6),rgba(255,255,255,0.36));color:var(--accent);font-weight:600;box-shadow:inset 0 -1px 0 rgba(255,255,255,0.6)}
 .nav-actions #admin-open:hover{background:var(--accent);color:#fff;border-color:transparent;box-shadow:0 8px 24px rgba(43,144,255,0.14);transform:translateY(-1px)}
@@ -50,6 +60,34 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 .messages{flex:1;padding:16px;overflow:auto;background:linear-gradient(180deg,#fbfdff,#f6f7fb)}
 .message{max-width:72%;padding:12px 14px;margin-bottom:12px;border-radius:14px;background:#fff;box-shadow:0 6px 18px rgba(15,23,36,0.06);border:1px solid rgba(15,23,36,0.03)}
 .message.me{margin-left:auto;background:linear-gradient(180deg,var(--accent), #1f7fdc);color:#fff;box-shadow:0 12px 30px rgba(31,127,220,0.08);border:1px solid rgba(0,0,0,0.04)}
+
+/* Badge for messages authored by the signed-in user */
+.you-badge{background:#eef7ff;color:var(--accent);padding:2px 6px;border-radius:999px;font-size:12px;margin-left:8px;border:1px solid rgba(43,144,255,0.08);font-weight:700}
+
+/* Align messages: own messages on right, others on left (already handled by .message.me margin-left:auto). Ensure meta content aligns with message alignment */
+.message .meta{display:flex;align-items:center;gap:8px}
+.message.me .meta{justify-content:flex-end}
+.message:not(.me) .meta{justify-content:flex-start}
+
+/* make the author/time (meta strong/time) more prominent for own messages */
+.message .meta strong{color:var(--muted);font-weight:600}
+.message.me .meta strong{color:#fff;font-weight:800}
+.message.me .meta .time{color:rgba(255,255,255,0.9);font-weight:600}
+
+/* tweak the You badge for own messages so it reads clearly on accent background */
+.message.me .you-badge{background:rgba(255,255,255,0.18);color:#03203a;border-color:rgba(255,255,255,0.06);font-weight:800;padding:3px 7px}
+
+/* message avatar: small circle with initial. Show on own messages (right) and hide for others to reduce visual noise */
+.msg-avatar{width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;margin-right:8px;background:#e6f0ff;color:var(--accent);border:1px solid rgba(43,144,255,0.08)}
+.message.me .msg-avatar{margin-left:8px;margin-right:0;background:rgba(255,255,255,0.18);color:#fff;border-color:rgba(255,255,255,0.08);box-shadow:0 6px 18px rgba(31,127,220,0.06)}
+/* show avatar for other users as a subtle muted circle on the left */
+.message:not(.me) .msg-avatar{display:inline-flex;margin-right:8px;background:#f1f5fb;color:#2b3b4a;border-color:transparent;box-shadow:0 4px 10px rgba(15,23,36,0.04)}
+
+/* place avatar on the right for own messages by reversing the meta order */
+.message.me .meta{flex-direction:row-reverse}
+
+/* ensure body text in .me messages remains readable */
+.message.me .body{color:rgba(255,255,255,0.95)}
 /* pending placeholder styling */
 .message.pending{opacity:0.85;border:1px dashed rgba(0,0,0,0.06);position:relative}
 .message.pending .controls{position:absolute;right:8px;top:8px;display:flex;gap:6px}
@@ -215,6 +253,12 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 .admin-list tbody tr:nth-child(even){background:#fff}
 .admin-list .actions{display:flex;gap:8px}
 .admin-empty{padding:28px;text-align:center;color:var(--muted)}
+
+/* Pager styles for admin tables */
+.pager{display:flex;gap:8px;align-items:center;margin-top:12px}
+.pager .pager-btn{background:transparent;border:1px solid #e6eef9;padding:6px 10px;border-radius:8px;cursor:pointer}
+.pager .pager-btn:hover{background:#f7fbff;border-color:rgba(43,144,255,0.06);transform:translateY(-1px)}
+.pager .pager-btn[disabled]{opacity:0.6;cursor:default;transform:none}
 
 @media (max-width:800px){
   .admin-card{margin:8px;border-radius:8px}

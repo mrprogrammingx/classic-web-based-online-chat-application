@@ -16,7 +16,7 @@ test('unread badges update on new messages and clear on open', async ({ page, co
   if(tokenA) await context.addCookies([{ name: 'token', value: tokenA, url: base }]);
 
   // Open chat page for A (rooms list is on chat.html)
-  await page.goto(base + '/static/chat.html');
+  await page.goto(base + '/static/chat/index.html');
 
   // Create room as A using request with Authorization
   const createRoom = await request.post(base + '/rooms', { headers: { 'Content-Type':'application/json', 'Authorization': `Bearer ${tokenA}` }, data: JSON.stringify({ name: roomName }) });
@@ -32,7 +32,7 @@ test('unread badges update on new messages and clear on open', async ({ page, co
   const pageB = await context.newPage();
   // prevent the client from auto-selecting the first room which would mark as read
   await pageB.addInitScript(()=>{ window.__TEST_SKIP_AUTOSELECT = true; });
-  await pageB.goto(base + '/static/chat.html');
+  await pageB.goto(base + '/static/chat/index.html');
   // expose token to client fetch wrapper for tests
   await pageB.evaluate((t)=>{ window.__AUTH_TOKEN = t; }, tokenB);
   await page.evaluate((t)=>{ window.__AUTH_TOKEN = t; }, tokenA);
