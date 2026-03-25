@@ -1,0 +1,96 @@
+// Rooms and messages loaders (extracted)
+(function(){
+  async function loadRooms(){
+    const data = await window.fetchJSON('/rooms');
+    if(data && data.rooms){ window.rooms = data.rooms; try{ if(typeof window.renderRooms === 'function') window.renderRooms(); }catch(e){} if(window.rooms && window.rooms.length && !(window.__TEST_SKIP_AUTOSELECT)) window.selectRoom(window.rooms[0]); }
+  }
+
+  async function loadContacts(){
+    const data = await window.fetchJSON('/friends');
+    if(data && data.friends){ window.contacts = data.friends.map(f=>({id: f.id, name: f.username || f.email || ('user'+f.id)})); try{ if(typeof window.renderContacts === 'function') window.renderContacts(); }catch(e){} }
+  }
+
+  async function loadRoomMembers(roomId){
+    const data = await window.fetchJSON(`/rooms/${roomId}`);
+    if(!data || !data.room) return window.renderMembers && window.renderMembers([]);
+    const memberIds = data.room.members || [];
+    if(memberIds.length === 0) return window.renderMembers && window.renderMembers([]);
+    const idsParam = memberIds.join(',');
+    const [presResp, usersResp] = await Promise.all([
+      window.fetchJSON(`/presence?ids=${encodeURIComponent(idsParam)}`),
+      window.fetchJSON(`/users?ids=${encodeURIComponent(idsParam)}`)
+    ]);
+    const statuses = (presResp && presResp.statuses) || {};
+    const users = (usersResp && usersResp.users) || [];
+    const nameById = {};
+    users.forEach(u => { nameById[String(u.id)] = u.username || u.email || ('user' + u.id); });
+    const members = memberIds.map(id => ({ name: nameById[String(id)] || ('user ' + id), online: statuses[String(id)] === 'online' }));
+    try{ if(typeof window.renderMembers === 'function') window.renderMembers(members); }catch(e){}
+  }
+
+  async function loadRoomMessages(roomId, opts){
+    opts = opts || {};
+    const before = opts.before ? `?before=${encodeURIComponent(opts.before)}` : '';
+    const data = await window.fetchJSON(`/rooms/${roomId}/messages${before}`);
+    if(!data || !data.messages) return;
+    if(opts.prepend){
+      const oldScrollHeight = window.messagesEl && window.messagesEl.scrollHeight || 0;
+      const frag = document.createDocumentFragment();
+      data.messages.forEach(m=>{ const el = window.appendMessage(m); frag.insertBefore(el, frag.firstChild); window.earliestTimestamp = window.earliestTimestamp ? Math.min(window.earliestTimestamp, m.created_at) : m.created_at; });
+      if(window.messagesEl) window.messagesEl.insertBefore(frag, window.messagesEl.firstChild);
+      const newScrollHeight = window.messagesEl && window.messagesEl.scrollHeight || 0;
+      if(window.messagesEl) window.messagesEl.scrollTop = newScrollHeight - oldScrollHeight + (window.messagesEl.scrollTop||0);
+    } else {
+      if(window.messagesEl) window.messagesEl.innerHTML = '';
+      data.messages.forEach(m=>{ const el = window.appendMessage(m); if(window.messagesEl) window.messagesEl.appendChild(el); window.earliestTimestamp = window.earliestTimestamp ? Math.min(window.earliestTimestamp, m.created_at) : m.created_at; window.latestTimestamp = m.created_at || window.latestTimestamp; });
+      if(window.messagesEl) { window.messagesEl.scrollTop = window.messagesEl.scrollHeight; window.autoscroll = true; }
+    }
+  }
+
+  async function loadDialogMessages(otherId, opts){
+    opts = opts || {};
+    const before = opts.before ? `?before=${encodeURIComponent(opts.before)}` : '';
+    const data = await window.fetchJSON(`/dialogs/${otherId}/messages${before}`);
+    if(!data || !data.messages) return;
+    if(opts.prepend){
+      const oldScrollHeight = window.messagesEl && window.messagesEl.scrollHeight || 0;
+      const frag = document.createDocumentFragment();
+      data.messages.forEach(m=>{ const el = window.appendMessage(m); frag.insertBefore(el, frag.firstChild); window.earliestTimestamp = window.earliestTimestamp ? Math.min(window.earliestTimestamp, m.created_at) : m.created_at; });
+      if(window.messagesEl) window.messagesEl.insertBefore(frag, window.messagesEl.firstChild);
+      const newScrollHeight = window.messagesEl && window.messagesEl.scrollHeight || 0;
+      if(window.messagesEl) window.messagesEl.scrollTop = newScrollHeight - oldScrollHeight + (window.messagesEl.scrollTop||0);
+    } else {
+      if(window.messagesEl) window.messagesEl.innerHTML = '';
+      data.messages.forEach(m=>{ const el = window.appendMessage(m); if(window.messagesEl) window.messagesEl.appendChild(el); window.earliestTimestamp = window.earliestTimestamp ? Math.min(window.earliestTimestamp, m.created_at) : m.created_at; window.latestTimestamp = m.created_at || window.latestTimestamp; });
+      if(window.messagesEl) { window.messagesEl.scrollTop = window.messagesEl.scrollHeight; window.autoscroll = true; }
+    }
+
+    // canonical selectRoom lives here so room-related loading and DOM updates are colocated
+    function selectRoom(roomOrId){
+      try{
+        let room = roomOrId;
+        if(!room) return;
+        if(typeof roomOrId === 'number' || typeof roomOrId === 'string'){
+          room = (window.rooms||[]).find(r => String(r.id) === String(roomOrId)) || { id: roomOrId };
+        }
+        window.currentRoom = room;
+        window.isDialog = !!room.is_dialog || false;
+        // update title if present in DOM
+        try{ const roomTitleEl = document.getElementById('room-title'); if(roomTitleEl) roomTitleEl.textContent = room.name || room.other_name || (window.isDialog ? 'Dialog' : 'Room'); }catch(e){}
+        // clear messages and load
+        try{ if(window.messagesEl) window.messagesEl.innerHTML = ''; }catch(e){}
+        try{
+          if(window.isDialog) loadDialogMessages(room.id);
+          else loadRoomMessages(room.id);
+        }catch(e){}
+        // mark active room item
+        try{
+          const roomsListEl = document.getElementById('rooms-list');
+          if(roomsListEl){ Array.from(roomsListEl.querySelectorAll('li')).forEach(li=>{ li.classList.toggle('active', li.dataset && String(li.dataset.id) === String(room.id)); }); }
+        }catch(e){}
+      }catch(e){}
+    }
+  }
+
+  try{ window.loadRooms = loadRooms; window.loadContacts = loadContacts; window.loadRoomMembers = loadRoomMembers; window.loadRoomMessages = loadRoomMessages; window.loadDialogMessages = loadDialogMessages; window.roomsApi = { loadRooms, loadContacts, loadRoomMembers, loadRoomMessages, loadDialogMessages }; }catch(e){}
+})();
