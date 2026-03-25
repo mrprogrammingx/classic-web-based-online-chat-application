@@ -1,69 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Chat — Demo UI</title>
-  <link rel="stylesheet" href="/static/styles.css" />
+  <meta charset="utf-8">
+  <meta http-equiv="refresh" content="0;url=/static/chat.html">
+  <title>Redirecting...</title>
 </head>
 <body>
-  <header class="topmenu">
-    <div class="brand">Chat Demo</div>
-    <nav class="topnav">
-      <a href="/static/home.html" class="btn btn-secondary" id="btn-home">Home</a>
-      <div id="user-info" class="user-info" aria-live="polite">
-        <!-- populated by app.js when user is authenticated -->
-      </div>
-      <div class="nav-actions">
-        <button id="btn-new-room">New Room</button>
-        <button id="btn-logout">Logout</button>
-      </div>
-    </nav>
-  </header>
-
-  <div class="app-grid">
-    <main class="messages-area">
-      <div class="messages-header">
-        <h2 id="room-title">Select a room</h2>
-      </div>
-      <div id="messages" class="messages"></div>
-      <form id="composer" class="composer" action="#">
-        <div id="reply-preview" class="reply-preview" style="display:none">
-          <small>Replying to <span id="reply-to-author"></span></small>
-          <div id="reply-to-text" class="reply-text"></div>
-          <button id="reply-cancel" type="button" aria-label="Cancel reply">✕</button>
-        </div>
-        <div class="composer-controls">
-          <button id="emoji-btn" type="button" class="emoji-btn" title="Insert emoji">😊</button>
-          <input id="file-input" type="file" class="file-input" />
-        </div>
-        <textarea id="message-input" placeholder="Write a message... (Shift+Enter for newline)" rows="2"></textarea>
-        <div class="composer-actions">
-          <button id="send-btn" type="submit">Send</button>
-        </div>
-      </form>
-    </main>
-
-    <aside class="rightbar">
-      <section class="rooms" id="rooms-section">
-        <h3 class="rooms-header">Rooms <button id="rooms-toggle" aria-label="Toggle rooms">▾</button></h3>
-        <ul id="rooms-list"></ul>
-      </section>
-      <section class="contacts">
-        <h3>Contacts</h3>
-        <ul id="contacts-list"></ul>
-      </section>
-      <section class="members">
-        <h3>Members</h3>
-        <ul id="members-list"></ul>
-      </section>
-    </aside>
-  </div>
-
-  <script src="/static/app.js" defer></script>
-  <div id="emoji-picker" class="emoji-picker" aria-hidden="true"></div>
-  <div id="uploading-indicator" class="uploading-indicator">Uploading...</div>
-  <div id="modal-root" aria-hidden="true"></div>
-  <div id="toast-root" aria-live="polite" aria-atomic="true"></div>
+  <p>Redirecting to <a href="/static/chat.html">chat page</a>...</p>
 </body>
 </html>

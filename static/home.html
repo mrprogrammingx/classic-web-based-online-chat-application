@@ -6,44 +6,58 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-  <header class="topmenu">
-    <div class="brand">Presence demo</div>
-    <nav class="topnav">
-      <a href="/static/index.html" class="btn btn-secondary" id="btn-back-to-chat">Chat</a>
-    </nav>
-  </header>
-  <div id="me">
-    <p>Signed in as <span id="me-name"></span></p>
-  <p>Presence: <span id="my-presence-dot" class="presence-dot"></span><span id="my-presence">unknown</span></p>
-    <button id="admin-open" class="btn">Admin</button>
-    <div id="admin-modal" class="admin-modal" style="display:none">
-      <h3>Admin - Users</h3>
-      <button id="admin-close" class="btn">Close</button>
-      <ul id="admin-users"></ul>
-    </div>
-    <button id="list-sessions" class="btn btn-secondary">List sessions</button>
-    <ul id="sessions"></ul>
-    <button id="logout" class="btn btn-primary">Logout</button>
-    <h3>Friends</h3>
-    <div id="status" class="status-box hidden"></div>
-  <div class="mb-8"><button id="debug-inspect" class="btn small">Debug Inspect</button></div>
-    <div>
-      <input id="friend-id-input" placeholder="friend id" />
-      <button id="add-friend" class="btn">Add</button>
-    </div>
-    <div class="mt-8">
-      <input id="friend-username-input" placeholder="friend username" />
-      <button id="request-by-username" class="btn">Send Request</button>
-    </div>
-    <h4>Incoming Requests</h4>
-    <ul id="incoming-requests"></ul>
-    <ul id="friends-list"></ul>
+  <div id="shared-header-placeholder"></div>
+  <!-- Optional customization: set data attributes on #header-custom to override brand, main button text/href, and admin button text -->
+  <div id="header-custom" data-brand="Presence demo" data-main-button-text="Chat" data-main-button-href="/static/chat.html" data-admin-button-text="Admin"></div>
+  <script src="/static/header-loader.js"></script>
+  <script src="/static/header-visibility.js"></script>
+  <div class="app-grid">
+    <main class="messages-area">
+      <div class="messages-header">
+        <h2>Presence & Notifications</h2>
+      </div>
+      <div class="messages">
+        <p>Welcome — use the right panel to manage friends, sessions and presence.</p>
+      </div>
+    </main>
+
+    <aside class="rightbar">
+      <section id="me" class="me-section">
+        <h3>Account</h3>
+        <p>Signed in as <strong id="me-name"></strong></p>
+        <p>Presence: <span id="my-presence-dot" class="presence-dot"></span><span id="my-presence">unknown</span></p>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button id="list-sessions" class="btn btn-secondary">List sessions</button>
+          <button id="logout" class="btn btn-primary">Logout</button>
+        </div>
+        <div id="sessions" style="margin-top:8px"></div>
+      </section>
+
+      <section>
+        <h3>Friends</h3>
+        <div id="status" class="status-box hidden"></div>
+        <div class="mb-8"><button id="debug-inspect" class="btn small">Debug Inspect</button></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <input id="friend-id-input" placeholder="friend id" />
+          <button id="add-friend" class="btn">Add</button>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <input id="friend-username-input" placeholder="friend username" />
+          <button id="request-by-username" class="btn">Send Request</button>
+        </div>
+        <h4 style="margin-top:12px">Incoming Requests</h4>
+        <ul id="incoming-requests"></ul>
+        <h4 style="margin-top:8px">Friends</h4>
+        <ul id="friends-list"></ul>
+      </section>
+    </aside>
   </div>
 
   <!-- roots for shared UI (modals, toasts) -->
   <div id="modal-root"></div>
   <div id="toast-root" class="toast-container" aria-live="polite" role="status"></div>
 
+  <script src="/static/unread.js"></script>
   <script src="/static/main.js"></script>
 </body>
 </html>
