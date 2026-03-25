@@ -1,0 +1,79 @@
+<header class="topmenu">
+  <div class="brand">Chat Demo</div>
+  <nav class="topnav">
+    <div class="nav-left">
+    <a href="#" class="btn btn-secondary" id="btn-home"><span class="nav-icon" aria-hidden="true"></span>Home</a>
+    <a href="/static/chat/index.html" class="btn btn-secondary" id="btn-chat"><span class="nav-icon" aria-hidden="true"></span>Chat</a>
+    <a href="/static/admin/index.html" class="btn btn-secondary" id="btn-admin-link"><span class="nav-icon" aria-hidden="true"></span>Admin</a>
+      <button id="btn-new-room" class="btn btn-primary">New Room</button>
+    </div>
+
+    <div id="user-info" class="user-info" aria-live="polite">
+      <!-- populated by app.js when user is authenticated -->
+    </div>
+
+    <div id="notifications" class="nav-notifications">
+      <button id="unread-total" class="unread-total" title="Unread notifications" aria-live="polite" aria-atomic="true"><span class="unread-icon">📨</span><span class="unread-count">0</span></button>
+      <span id="unread-live" class="sr-only" aria-live="polite"></span>
+    </div>
+
+    <div class="nav-actions">
+      <button id="admin-open" class="btn" style="display:none">Admin panel</button>
+    </div>
+  </nav>
+</header>
+<script src="/static/admin/admin-ui.js"></script>
+<script>
+  // Assign the canonical home href from SITE_CONFIG when this fragment is injected.
+  try{
+    (function(){
+      var setHome = function(){
+        try{
+          var el = document.getElementById('btn-home');
+          if(el){
+            var href = (window.SITE_CONFIG && window.SITE_CONFIG.homeHref) ? window.SITE_CONFIG.homeHref : '/static/home.html';
+            el.setAttribute('href', href);
+          }
+          // set admin link if present
+          var adminEl = document.getElementById('btn-admin-link');
+          if(adminEl){
+            var adminHref = (window.SITE_CONFIG && window.SITE_CONFIG.adminHref) ? window.SITE_CONFIG.adminHref : '/static/admin/index.html';
+            var adminText = (window.SITE_CONFIG && window.SITE_CONFIG.adminButtonText) ? window.SITE_CONFIG.adminButtonText : 'Admin';
+            adminEl.setAttribute('href', adminHref);
+            adminEl.textContent = adminText;
+          }
+        }catch(e){}
+      };
+      var setActive = function(){
+        try{
+          var path = (location && location.pathname) ? location.pathname : window.location.pathname;
+          var entries = [
+            { id: 'btn-home', href: (window.SITE_CONFIG && window.SITE_CONFIG.homeHref) ? window.SITE_CONFIG.homeHref : '/static/home.html' },
+            { id: 'btn-chat', href: (window.SITE_CONFIG && window.SITE_CONFIG.mainHref) ? window.SITE_CONFIG.mainHref : '/static/chat/index.html' },
+            { id: 'btn-admin-link', href: (window.SITE_CONFIG && window.SITE_CONFIG.adminHref) ? window.SITE_CONFIG.adminHref : '/static/admin/index.html' }
+          ];
+          entries.forEach(function(e){
+            try{
+              var el = document.getElementById(e.id);
+              if(!el) return;
+              var targetPath = '';
+              try{ targetPath = new URL(e.href, location.origin).pathname; }catch(ex){ var a=document.createElement('a'); a.href=e.href; targetPath=a.pathname; }
+              if(path === targetPath || location.href.indexOf(e.href) === 0){
+                // mark active
+                el.classList.remove('btn-secondary'); el.classList.add('btn-primary');
+                el.classList.add('active-nav');
+                el.setAttribute('aria-current','page');
+              } else {
+                el.classList.remove('btn-primary'); el.classList.remove('active-nav'); if(!el.classList.contains('btn-secondary')) el.classList.add('btn-secondary');
+                el.removeAttribute('aria-current');
+              }
+            }catch(e){}
+          });
+        }catch(e){}
+      };
+      if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setHome); else setHome();
+      // also set active state after adjusting hrefs
+      try{ setActive(); }catch(e){}
+    })();
+  }catch(e){}
+</script>
