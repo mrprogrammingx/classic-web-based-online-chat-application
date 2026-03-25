@@ -10,7 +10,31 @@
 html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;background:var(--bg);color:#222}
 .topmenu{height:var(--topbar-height);display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:#fff;border-bottom:1px solid #e6e9ef}
 .topmenu .brand{font-weight:700}
+.topnav{display:flex;align-items:center;gap:12px}
+.topnav .nav-left{display:flex;align-items:center;gap:10px;margin-right:8px}
 .topnav button{margin-left:8px}
+
+/* Header-specific button polish */
+.topnav .nav-left a.btn{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--muted);text-decoration:none;font-weight:600;transition:all 160ms cubic-bezier(.2,.9,.2,1)}
+.topnav .nav-left a.btn:hover{background:rgba(43,144,255,0.06);color:var(--accent);border-color:rgba(43,144,255,0.08);transform:translateY(-1px)}
+.topnav .nav-left a.btn:focus{outline:3px solid rgba(43,144,255,0.12);outline-offset:2px}
+.topnav .nav-left a.btn.active-nav, .topnav .nav-left a.btn[aria-current="page"]{background:var(--accent);color:#fff;border-color:transparent;box-shadow:0 10px 30px rgba(43,144,255,0.12);transform:none}
+
+/* Admin action styling - more distinct outline/pill */
+.nav-actions #admin-open{padding:6px 12px;border-radius:999px;border:1px solid rgba(43,144,255,0.16);background:linear-gradient(180deg,rgba(255,255,255,0.6),rgba(255,255,255,0.36));color:var(--accent);font-weight:600;box-shadow:inset 0 -1px 0 rgba(255,255,255,0.6)}
+.nav-actions #admin-open:hover{background:var(--accent);color:#fff;border-color:transparent;box-shadow:0 8px 24px rgba(43,144,255,0.14);transform:translateY(-1px)}
+.nav-actions #admin-open:focus{outline:3px solid rgba(43,144,255,0.12);outline-offset:2px}
+
+/* New Room primary button in header */
+.nav-left #btn-new-room{background:linear-gradient(180deg,var(--accent), #1f7fdc);color:#fff;border:none;padding:8px 12px;border-radius:999px;box-shadow:0 10px 26px rgba(31,127,220,0.12);font-weight:700}
+.nav-left #btn-new-room:hover{transform:translateY(-2px);filter:brightness(1.02)}
+.nav-left #btn-new-room:active{transform:translateY(0)}
+
+/* Ensure spacing is consistent on small screens */
+@media (max-width:600px){
+  .topnav{gap:8px}
+  .topnav .nav-left a.btn{padding:6px 8px;font-size:13px}
+}
 .app-grid{display:flex;height:calc(100vh - var(--topbar-height))}
 .rightbar{width:var(--sidebar-width);background:#fff;border-left:1px solid #e6e9ef;padding:12px;overflow:auto;display:flex;flex-direction:column}
 .rightbar h3{margin:6px 0;color:var(--muted);font-size:13px;display:flex;align-items:center;justify-content:space-between}
@@ -24,8 +48,8 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 .messages-area{flex:1;display:flex;flex-direction:column;position:relative}
 .messages-header{padding:12px;border-bottom:1px solid #eef2f7;background:linear-gradient(90deg,#fff, #fbfdff)}
 .messages{flex:1;padding:16px;overflow:auto;background:linear-gradient(180deg,#fbfdff,#f6f7fb)}
-.message{max-width:72%;padding:10px 12px;margin-bottom:10px;border-radius:12px;background:#fff;box-shadow:0 1px 0 rgba(0,0,0,0.04)}
-.message.me{margin-left:auto;background:var(--accent);color:#fff}
+.message{max-width:72%;padding:12px 14px;margin-bottom:12px;border-radius:14px;background:#fff;box-shadow:0 6px 18px rgba(15,23,36,0.06);border:1px solid rgba(15,23,36,0.03)}
+.message.me{margin-left:auto;background:linear-gradient(180deg,var(--accent), #1f7fdc);color:#fff;box-shadow:0 12px 30px rgba(31,127,220,0.08);border:1px solid rgba(0,0,0,0.04)}
 /* pending placeholder styling */
 .message.pending{opacity:0.85;border:1px dashed rgba(0,0,0,0.06);position:relative}
 .message.pending .controls{position:absolute;right:8px;top:8px;display:flex;gap:6px}
@@ -120,6 +144,85 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 .user-dropdown .sessions-list li button[disabled]{opacity:0.6;cursor:default}
 .user-dropdown .dropdown-panel .controls{display:flex;gap:8px;justify-content:space-between;margin-top:8px}
 .user-dropdown .dropdown-panel button{padding:8px 10px;border-radius:8px;border:1px solid #e6eef9;background:#fff;color:#0f1724}
+
+/* unread total indicator in header */
+.nav-notifications{display:inline-flex;align-items:center;margin-right:8px;position:relative}
+.unread-total{background:transparent;color:var(--muted);border:none;padding:6px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;width:36px;height:36px;font-size:16px;cursor:pointer;transition:transform 160ms cubic-bezier(.2,.9,.2,1), box-shadow 160ms}
+/* small circular icon, with a small numeric badge */
+.unread-total .unread-icon{font-size:16px}
+.unread-total .unread-count{display:none}
+.nav-notifications .unread-badge-inline{position:absolute;top:4px;right:4px;min-width:18px;padding:2px 6px;border-radius:999px;background:#d33;color:#fff;font-size:11px;font-weight:700;border:2px solid #fff;box-shadow:0 6px 18px rgba(0,0,0,0.08)}
+.unread-total:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(43,144,255,0.08)}
+/* Keep the unread total visible even when there are no unread messages.
+  When there are zero unread messages we show a muted variant instead of hiding it. */
+.unread-total.muted{background:transparent;color:var(--muted);border:1px solid #eef2f7;box-shadow:none}
+
+/* small icon inside the unread total */
+.unread-total .unread-icon{margin-right:6px;font-size:14px;line-height:1}
+.unread-total .unread-count{font-weight:600}
+
+/* pulse animation for new unread messages */
+.unread-total.pulse{animation:unread-pulse-remote 520ms ease-out}
+@keyframes unread-pulse-remote{
+  0%{transform:scale(1);box-shadow:0 0 0 rgba(0,0,0,0)}
+  30%{transform:scale(1.08);box-shadow:0 8px 24px rgba(43,144,255,0.14)}
+  60%{transform:scale(0.98)}
+  100%{transform:scale(1)}
+}
+
+/* remote: more pronounced blue pulse (new messages from others) */
+.unread-total.pulse-remote{animation:unread-pulse-remote 520ms ease-out}
+
+/* local: subtler green pulse for messages sent by this client */
+.unread-total.pulse-local{animation:unread-pulse-local 420ms ease-out}
+@keyframes unread-pulse-local{
+  0%{transform:scale(1);box-shadow:0 0 0 rgba(0,0,0,0)}
+  40%{transform:scale(1.04);box-shadow:0 6px 16px rgba(46,204,113,0.12)}
+  80%{transform:scale(0.995)}
+  100%{transform:scale(1)}
+}
+
+/* compact dropdown-style panel for unread notifications (anchored to header) */
+.unread-panel{position:absolute;right:16px;top:calc(var(--topbar-height) + 8px);background:#fff;border:1px solid #eef2f7;padding:12px;border-radius:10px;box-shadow:0 12px 40px rgba(15,23,36,0.08);min-width:260px;z-index:60}
+.unread-panel h4{margin:0 0 8px;font-size:13px;color:#3b4958}
+.unread-panel ul{list-style:none;padding:0;margin:0;max-height:320px;overflow:auto}
+.unread-panel li{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:6px}
+.unread-panel li + li{border-top:1px solid #f3f6fb}
+.unread-panel .panel-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
+.unread-panel .open-btn{padding:8px 10px;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer}
+
+/* Admin panel styles */
+.admin-panel{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:820px;max-width:94vw;background:#fff;border:1px solid #eef2f7;padding:16px;border-radius:10px;box-shadow:0 12px 40px rgba(15,23,36,0.12);z-index:10001}
+.admin-panel .tabs{display:flex;gap:8px;margin-bottom:12px}
+.admin-panel .tabs button{padding:8px 10px;border-radius:8px;border:1px solid #e6eef9;background:#fff}
+.admin-panel .tabs button.active{background:var(--accent);color:#fff;border:none}
+.admin-panel .panel-body{max-height:480px;overflow:auto}
+.admin-panel .item-row{display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid #f3f6fb}
+.admin-panel .item-row .meta{color:var(--muted);font-size:13px}
+.admin-panel .actions button{margin-left:8px}
+
+/* Admin page card layout (full page) */
+.admin-page{padding:28px 18px}
+.admin-card{max-width:980px;margin:18px auto;background:#fff;border:1px solid #eef2f7;border-radius:12px;box-shadow:0 14px 40px rgba(15,23,36,0.06);overflow:hidden}
+.admin-card-header{display:flex;align-items:center;justify-content:space-between;padding:18px;border-bottom:1px solid #f6f9fc}
+.admin-card-header h2{margin:0;font-size:20px}
+.admin-card-header .muted{color:var(--muted);margin:4px 0 0;font-size:13px}
+.admin-actions{display:flex;gap:8px;align-items:center}
+.admin-content{padding:12px}
+.admin-list{width:100%;border-collapse:collapse;font-size:14px}
+.admin-list thead th{background:#fbfdff;padding:10px;text-align:left;border-bottom:1px solid #f3f6fb;color:#2b3b4a}
+.admin-list tbody td{padding:10px;border-top:1px solid #fbfdff}
+.admin-list tbody tr:nth-child(even){background:#fff}
+.admin-list .actions{display:flex;gap:8px}
+.admin-empty{padding:28px;text-align:center;color:var(--muted)}
+
+@media (max-width:800px){
+  .admin-card{margin:8px;border-radius:8px}
+  .admin-card-header{flex-direction:column;align-items:flex-start;gap:8px}
+}
+
+/* visually hidden for screen readers */
+.sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;border:0!important}
 
 /* modal */
 .modal-backdrop{position:fixed;inset:0;background:rgba(15,23,36,0.45);display:flex;align-items:center;justify-content:center;z-index:9999}
