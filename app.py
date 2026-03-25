@@ -22,6 +22,7 @@ from friends import router as friends_router
 from messages import router as messages_router
 from rooms import router as rooms_router
 from notifications import router as notifications_router
+import os
 
 app = FastAPI()
 
@@ -35,7 +36,7 @@ async def startup():
 
 @app.get('/')
 async def root():
-    return RedirectResponse(url='/static/index.html')
+    return RedirectResponse(url='/static/chat.html')
 
 async def require_auth(request: Request):
     # prefer Authorization header, fall back to HttpOnly cookie named 'token'
@@ -140,6 +141,55 @@ app.include_router(rooms_router)
 app.include_router(notifications_router)
 from users import router as users_router
 app.include_router(users_router)
+
+
+@app.post('/_test/create_user')
+async def create_test_user(request: Request):
+    """Test-only helper to create a user and return an auth token.
+
+    This endpoint is only enabled when the environment variable TEST_MODE is set to '1'.
+    It creates the user if necessary, creates a session and returns { user, token }.
+    """
+    if os.getenv('TEST_MODE') != '1':
+        # hide this route when not in test mode
+        raise HTTPException(status_code=404, detail='not found')
+    body = await request.json()
+    email = body.get('email')
+    username = body.get('username')
+    password = body.get('password')
+    if not email or not username or not password:
+        raise HTTPException(status_code=400, detail='email, username and password required')
+    async with aiosqlite.connect(DB) as db:
+        try:
+            await db.execute('INSERT INTO users (email, username, password, created_at) VALUES (?, ?, ?, ?)',
+                             (email, username, hash_pw(password), int(time.time())))
+            await db.commit()
+        except aiosqlite.IntegrityError:
+            # user exists; try to fetch existing by email first, then username
+            cur = await db.execute('SELECT id, email, username, is_admin FROM users WHERE email = ?', (email,))
+            row = await cur.fetchone()
+            if not row:
+                cur = await db.execute('SELECT id, email, username, is_admin FROM users WHERE username = ?', (username,))
+                row = await cur.fetchone()
+            if not row:
+                # fallback: return a clear error instead of raising ambiguous 500
+                raise HTTPException(status_code=409, detail='user exists but lookup failed')
+            user = {'id': row[0], 'email': row[1], 'username': row[2], 'is_admin': bool(row[3])}
+        else:
+            cur = await db.execute('SELECT id, email, username, is_admin FROM users WHERE email = ?', (email,))
+            row = await cur.fetchone()
+            user = {'id': row[0], 'email': row[1], 'username': row[2], 'is_admin': bool(row[3])}
+    # create session and token
+    jti = str(uuid.uuid4())
+    expires = int(time.time() + 3600*24*30)
+    ip = request.client.host if request.client else None
+    ua = request.headers.get('user-agent')
+    await store_session(jti, user['id'], expires, ip=ip, user_agent=ua)
+    token = create_token({'id': user['id'], 'email': user['email'], 'username': user['username'], 'jti': jti}, exp_seconds=3600*24*30)
+    resp = JSONResponse({'user': user, 'token': token})
+    # keep same behavior as register/login: set HttpOnly cookie for convenience
+    resp.set_cookie(key='token', value=token, httponly=True, samesite='lax')
+    return resp
 
 @app.post('/refresh')
 async def refresh(authorization: str = Header(None), token: str = Cookie(None)):
