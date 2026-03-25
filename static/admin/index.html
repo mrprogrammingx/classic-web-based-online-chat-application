@@ -1,0 +1,53 @@
+  <!doctype html>
+  <html>
+  <head>
+    <meta charset="utf-8">
+    <title>Admin</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <div id="shared-header-placeholder"></div>
+  <!-- inlined site config for canonical urls -->
+  <script src="/static/site-config.js"></script>
+  <!-- load canonical header fragment and visibility helper -->
+  <script src="/static/header/header-loader.js"></script>
+  <script src="/static/header/header-visibility.js"></script>
+
+    <main class="admin-page">
+      <section class="admin-card">
+        <header class="admin-card-header">
+          <div>
+            <h2>Admin Console</h2>
+            <p class="muted">Administrative tools and site data. Admin access required to perform actions.</p>
+          </div>
+          <div class="admin-actions">
+            <button id="refresh-admin" class="btn small">Refresh</button>
+          </div>
+        </header>
+
+        <div id="admin-content" class="admin-content">Loading...</div>
+      </section>
+    </main>
+
+    <div id="modal-root"></div>
+    <div id="toast-root" aria-live="polite"></div>
+    <script src="/static/unread.js"></script>
+    <script src="/static/main.js"></script>
+    <!-- <script src="/static/admin-page.js"></script> -->
+     <script type="module" src="/static/admin/admin.js"></script>
+    <script>
+      // Boot helper: if for some reason the external admin-page.js didn't auto-init,
+      // call initAdminUI as a last resort. This is a very small, safe fallback and
+      // can be removed once the root cause is fixed.
+      (function(){
+        try{
+          if(window.initAdminUI && typeof window.initAdminUI === 'function'){
+            window.initAdminUI();
+            console.debug && console.debug('admin: boot initAdminUI()');
+            if(window._setAdminStatus) window._setAdminStatus('booted');
+          }
+        }catch(e){ console.error('admin boot failed', e); }
+      })();
+    </script>
+  </body>
+  </html>

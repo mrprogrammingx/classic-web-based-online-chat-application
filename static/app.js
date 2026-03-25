@@ -95,6 +95,57 @@ document.addEventListener('DOMContentLoaded', ()=>{
     });
   }
 
+  // currently selected room/dialog
+  let currentRoom = null;
+
+  // Select a room from the room list and load its messages
+  function selectRoom(room){
+    try{
+      if(!room) return;
+      isDialog = false;
+      currentRoom = room;
+      // update UI active state
+      Array.from(roomsList.children).forEach(li => li.classList.toggle('active', String(li.dataset.id) === String(room.id)));
+      // set title
+      try{ roomTitle.textContent = room.name || ('room ' + room.id); }catch(e){}
+      // clear messages and load
+      messagesEl.innerHTML = '';
+      earliestTimestamp = null; latestTimestamp = null;
+      loadRoomMessages(room.id);
+      loadRoomMembers(room.id);
+    }catch(e){ console.warn('selectRoom failed', e); }
+  }
+
+  // Open a dialog (private conversation) with a contact
+  function openDialog(contact){
+    try{
+      if(!contact) return;
+      isDialog = true;
+      currentRoom = contact;
+      Array.from(contactsList.children).forEach(li => li.classList.toggle('active', String(li.dataset.id) === String(contact.id)));
+      try{ roomTitle.textContent = contact.name || ('user ' + contact.id); }catch(e){}
+      messagesEl.innerHTML = '';
+      earliestTimestamp = null; latestTimestamp = null;
+      loadDialogMessages(contact.id);
+      renderMembers([]);
+    }catch(e){ console.warn('openDialog failed', e); }
+  }
+
+  // Append a message element to the message list and return the element
+  function appendMessage(m){
+    try{
+      const wrap = document.createElement('div');
+      wrap.className = 'message ' + ((m.user_id && window.__ME_ID && m.user_id === window.__ME_ID) ? 'me' : '');
+      const meta = document.createElement('div'); meta.className = 'meta';
+      const who = document.createElement('strong'); who.textContent = m.username || m.user_id || ('user'+(m.user_id||''));
+      const time = document.createElement('span'); time.className = 'time'; time.textContent = m.created_at ? (new Date(m.created_at).toLocaleString()) : '';
+      meta.appendChild(who); meta.appendChild(document.createTextNode(' ')); meta.appendChild(time);
+      const body = document.createElement('div'); body.className = 'body'; body.textContent = m.text || '';
+      wrap.appendChild(meta); wrap.appendChild(body);
+      return wrap;
+    }catch(e){ console.warn('appendMessage failed', e); const r = document.createElement('div'); r.textContent = m && (m.text || JSON.stringify(m)) || ''; return r; }
+  }
+
   // Load unread summary from server and update badges
   async function loadUnreadSummary(){
     const data = await fetchJSON('/notifications/unread-summary');
@@ -485,7 +536,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
     const r = await fetch('/refresh', {method: 'POST', credentials: 'include'}).catch(()=>null);
     if(!r || r.status === 401){
       // redirect to the hosted login page which will set cookie on success
-      location.href = '/static/login.html';
+  location.href = '/static/auth/login.html';
       return;
     }
     // if logged in, the response contains token and user metadata
@@ -524,7 +575,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
           function openPanel(){ if(panel) panel.style.display='block'; loadSessions(); }
           toggle.addEventListener('click', ()=>{ if(panel.style.display==='block') closePanel(); else openPanel(); });
           refreshBtn.addEventListener('click', ()=> loadSessions());
-          inlineLogout.addEventListener('click', async ()=>{ try{ await fetch('/logout', {method:'POST', credentials:'include'}); }catch(e){} location.href='/static/login.html'; });
+          inlineLogout.addEventListener('click', async ()=>{ try{ await fetch('/logout', {method:'POST', credentials:'include'}); }catch(e){} location.href='/static/auth/login.html'; });
 
           async function loadSessions(){
             sessionsList.innerHTML = '<li class="meta">Loading…</li>';
@@ -665,7 +716,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
         await fetch('/logout', {method:'POST', credentials:'include'});
       }catch(e){}
       // redirect to login page
-      location.href = '/static/login.html';
+  location.href = '/static/auth/login.html';
     });
   }
 

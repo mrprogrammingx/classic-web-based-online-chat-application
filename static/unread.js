@@ -26,8 +26,8 @@
       function onDocClick(ev){ const p = document.querySelector('.unread-panel'); if(!p) return; if(p.contains(ev.target)) return; if(ev.target && ev.target.id === 'unread-total') return; cleanupPanel(); }
       function onKeyDown(ev){ if(ev.key === 'Escape') cleanupPanel(); }
       setTimeout(()=>{ document.addEventListener('click', onDocClick); document.addEventListener('keydown', onKeyDown); }, 10);
-      openBtn.addEventListener('click', ()=>{ cleanupPanel(); location.href = '/static/home.html'; });
-    }catch(e){ try{ location.href = '/static/home.html'; }catch(e){} }
+  openBtn.addEventListener('click', ()=>{ cleanupPanel(); try{ location.href = (window.SITE_CONFIG && window.SITE_CONFIG.homeHref) ? window.SITE_CONFIG.homeHref : '/static/home.html'; }catch(e){ location.href = '/static/home.html'; } });
+  }catch(e){ try{ location.href = (window.SITE_CONFIG && window.SITE_CONFIG.homeHref) ? window.SITE_CONFIG.homeHref : '/static/home.html'; }catch(e){} }
   }
 
   function attachUnreadHandlers(){

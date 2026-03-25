@@ -8,7 +8,7 @@ test('open unread panel shows items or empty state', async ({ browser, request }
   const context = await browser.newContext({ viewport: { width: 1200, height: 800 } });
   await context.addCookies([{ name: 'token', value: token, url: BASE, httpOnly: true, sameSite: 'Lax' }]);
   const page = await context.newPage();
-  await page.goto(BASE + '/static/chat.html');
+  await page.goto(BASE + '/static/chat/index.html');
   // wait for header and unread button
   await page.waitForSelector('#unread-total', { timeout: 10000 });
   // click to open panel

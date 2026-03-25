@@ -190,7 +190,7 @@ function renderUserInfo(user){
 
     if(toggle) toggle.addEventListener('click', async ()=>{ if(panel && panel.style.display==='block') { closePanel(); releaseFocusTrap(); } else { openPanel(); if(!sessionsLoaded){ await loadSessions(); sessionsLoaded = true; } trapFocus(panel); } });
     if(refreshBtn) refreshBtn.addEventListener('click', ()=> loadSessions());
-    if(inlineLogout) inlineLogout.addEventListener('click', async ()=>{ try{ await fetch('/logout', {method:'POST', credentials:'include'}); }catch(e){} location.href='/static/login.html'; });
+  if(inlineLogout) inlineLogout.addEventListener('click', async ()=>{ try{ await fetch('/logout', {method:'POST', credentials:'include'}); }catch(e){} location.href='/static/auth/login.html'; });
 
     // Ensure admin-open is hidden for non-admins (double safety: server enforces admin endpoints)
     try{ const adminBtn = document.getElementById('admin-open'); if(adminBtn && !user.is_admin) adminBtn.style.display = 'none'; }catch(e){}
@@ -269,8 +269,8 @@ async function register(){
       const pj = data.token ? JSON.parse(atob(data.token.split('.')[1])) : {};
       sessionStorage.setItem('boot_jti', pj.jti || '');
     }catch(e){}
-    // redirect to home which will call /refresh to bootstrap from cookie
-    location.href = '/static/home.html';
+  // redirect to home which will call /refresh to bootstrap from cookie
+  location.href = siteHref('homeHref', '/static/home.html');
   } else {
     try{ await showAlert(JSON.stringify(data), 'Registration failed'); }catch(e){}
   }
@@ -290,8 +290,8 @@ async function login(){
       const pj = data.token ? JSON.parse(atob(data.token.split('.')[1])) : {};
       sessionStorage.setItem('boot_jti', pj.jti || '');
     }catch(e){}
-    // redirect to home which will call /refresh to bootstrap from cookie
-    location.href = '/static/home.html';
+  // redirect to home which will call /refresh to bootstrap from cookie
+  location.href = siteHref('homeHref', '/static/home.html');
   } else {
     try{ await showAlert(JSON.stringify(data), 'Login failed'); }catch(e){}
   }
@@ -320,6 +320,12 @@ function parseJwt (token) {
     try{
         return JSON.parse(atob(token.split('.')[1]));
     }catch(e){return {}};
+}
+
+// helper to read canonical site hrefs exposed by header-loader (falls back to provided default)
+function siteHref(key, fallback){
+  try{ if(window && window.SITE_CONFIG && window.SITE_CONFIG[key]) return window.SITE_CONFIG[key]; }catch(e){}
+  return fallback;
 }
 
 function authHeaders(contentType){
@@ -449,7 +455,7 @@ const requestByUsernameBtn = document.getElementById('request-by-username'); if(
 
 const logoutBtn = document.getElementById('logout'); if(logoutBtn) logoutBtn.onclick = async ()=>{
   await fetch(BASE + '/logout', {method:'POST', headers:{'Authorization':'Bearer ' + token}, credentials: 'include'});
-  token = null; jti = null; location.href = '/static/login.html';
+  token = null; jti = null; location.href = '/static/auth/login.html';
 }
 
 const debugBtn = document.getElementById('debug-inspect'); if(debugBtn) debugBtn.onclick = async ()=>{

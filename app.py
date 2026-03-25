@@ -15,6 +15,7 @@ from utils import (
     session_exists,
     update_session_expiry,
     require_auth,
+    presence_online_seconds,
 )
 from presence import router as presence_router
 from admin import router as admin_router
@@ -36,7 +37,7 @@ async def startup():
 
 @app.get('/')
 async def root():
-    return RedirectResponse(url='/static/chat.html')
+    return RedirectResponse(url='/static/chat/index.html')
 
 async def require_auth(request: Request):
     # prefer Authorization header, fall back to HttpOnly cookie named 'token'
@@ -220,6 +221,14 @@ async def refresh(authorization: str = Header(None), token: str = Cookie(None)):
     resp = JSONResponse({'token': new_token, 'user': {'id': data['id'], 'email': data['email'], 'username': data['username'], 'is_admin': is_admin}})
     resp.set_cookie('token', new_token, httponly=True, samesite='lax')
     return resp
+
+
+@app.get('/_test/presence_config')
+async def _test_presence_config():
+    # exposed only in TEST_MODE to help diagnose timing/env issues in CI/tests
+    if os.getenv('TEST_MODE') != '1':
+        raise HTTPException(status_code=404, detail='not found')
+    return {'presence_online_seconds': presence_online_seconds(), 'time': int(time.time())}
 
 @app.post('/password-reset')
 async def password_reset(request: Request):
