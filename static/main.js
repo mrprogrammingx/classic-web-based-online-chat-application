@@ -419,7 +419,7 @@ async function afterAuth(user){
 }
 
 window.addEventListener('beforeunload', async ()=>{
-  try{ await fetch(BASE + '/presence/close', {method:'POST', headers:{'content-type':'application/json','Authorization':'Bearer ' + token}, body: JSON.stringify({tab_id: tabId})}); }catch(e){}
+  try{ if(window && typeof window.closePresence === 'function') { await window.closePresence(tabId, token); } else { await fetch(BASE + '/presence/close', {method:'POST', headers:{'content-type':'application/json','Authorization':'Bearer ' + token}, body: JSON.stringify({tab_id: tabId})}); } }catch(e){}
 });
 
 const regBtn = document.getElementById('register'); if(regBtn) regBtn.onclick = register;
