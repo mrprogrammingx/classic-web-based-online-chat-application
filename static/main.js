@@ -129,8 +129,91 @@ async function init(){
   }catch(e){ console.warn('refresh failed', e) }
 }
 
+// Render the user-info dropdown (shared across pages)
+function renderUserInfo(user){
+  try{
+    const ui = document.getElementById('user-info'); if(!ui) return;
+    const display = escapeHtml(user.username || user.email || ('user'+user.id));
+    ui.innerHTML = `
+      <div class="user-dropdown">
+        <div class="user-toggle" id="user-toggle" tabindex="0">
+          <span class="avatar">${escapeHtml((user.username||user.email||'U').charAt(0).toUpperCase())}</span>
+          <strong>${display}</strong>
+          ${user.is_admin? '<span class="badge">admin</span>':''}
+        </div>
+        <div class="dropdown-panel" id="user-panel" style="display:none">
+          <h4>Sessions</h4>
+          <ul class="sessions-list" id="sessions-list"><li class="meta">Loading…</li></ul>
+          <div style="margin-top:8px;display:flex;gap:8px;justify-content:space-between">
+            <button id="btn-logout-inline" type="button">Logout</button>
+            <button id="btn-refresh-sessions" type="button">Refresh</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const toggle = document.getElementById('user-toggle');
+    const panel = document.getElementById('user-panel');
+    const sessionsList = document.getElementById('sessions-list');
+    const refreshBtn = document.getElementById('btn-refresh-sessions');
+    const inlineLogout = document.getElementById('btn-logout-inline');
+
+    // lazy-load sessions only when the panel opens
+    let sessionsLoaded = false;
+
+    async function loadSessions(){
+      if(!sessionsList) return;
+      sessionsList.innerHTML = '<li class="meta">Loading…</li>';
+      try{
+        const data = await fetch(BASE + '/sessions', {credentials: 'include'}).then(r=>r.json());
+        if(!data || !data.sessions) return sessionsList.innerHTML = '<li class="meta">No sessions</li>';
+        sessionsList.innerHTML='';
+        data.sessions.forEach(s=>{
+          const li=document.createElement('li');
+          const meta=document.createElement('div'); meta.className='meta';
+          meta.textContent = `jti: ${s.jti} • last active: ${new Date((s.last_active||s.created_at||0)*1000).toLocaleString()}`;
+          const btn=document.createElement('button'); btn.type='button'; btn.textContent='Revoke';
+          btn.addEventListener('click', async ()=>{
+            const ok = await showAlert('Revoke this session?','Revoke session'); if(!ok) return;
+            try{ btn.disabled=true; const r = await fetch('/sessions/revoke', {method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({jti: s.jti})});
+              if(r && r.ok){ li.style.transition='opacity 220ms'; li.style.opacity='0'; setTimeout(()=>{ li.remove(); showToast('Session revoked','success'); },260); }
+              else { btn.disabled=false; showToast('Failed to revoke session','error'); }
+            }catch(e){ btn.disabled=false; showToast('Failed to revoke session','error'); }
+          });
+          li.appendChild(meta); li.appendChild(btn); sessionsList.appendChild(li);
+        });
+      }catch(e){ sessionsList.innerHTML = '<li class="meta">Error loading sessions</li>'; }
+    }
+
+    function openPanel(){ if(panel) panel.style.display='block'; }
+    function closePanel(){ if(panel) panel.style.display='none'; }
+
+    if(toggle) toggle.addEventListener('click', async ()=>{ if(panel && panel.style.display==='block') { closePanel(); releaseFocusTrap(); } else { openPanel(); if(!sessionsLoaded){ await loadSessions(); sessionsLoaded = true; } trapFocus(panel); } });
+    if(refreshBtn) refreshBtn.addEventListener('click', ()=> loadSessions());
+    if(inlineLogout) inlineLogout.addEventListener('click', async ()=>{ try{ await fetch('/logout', {method:'POST', credentials:'include'}); }catch(e){} location.href='/static/login.html'; });
+
+    // Ensure admin-open is hidden for non-admins (double safety: server enforces admin endpoints)
+    try{ const adminBtn = document.getElementById('admin-open'); if(adminBtn && !user.is_admin) adminBtn.style.display = 'none'; }catch(e){}
+
+  }catch(e){ console.warn('renderUserInfo failed', e); }
+}
 window.addEventListener('load', async ()=>{
-  if(!page.endsWith('/home.html')) return;
+  // Only bootstrap on pages that include the header/user-info (we intentionally skip login/register)
+
+// Focus trap helpers for accessibility
+let _previouslyFocused = null;
+function trapFocus(root){
+  if(!root) return;
+  _previouslyFocused = document.activeElement;
+  const focusable = root.querySelectorAll('button, [href], input, textarea, [tabindex]:not([tabindex="-1"])');
+  const first = focusable[0]; const last = focusable[focusable.length-1];
+  function keyHandler(e){ if(e.key === 'Tab'){ if(e.shiftKey){ if(document.activeElement === first){ e.preventDefault(); last.focus(); } } else { if(document.activeElement === last){ e.preventDefault(); first.focus(); } } } else if(e.key === 'Escape'){ root.style.display='none'; releaseFocusTrap(); } }
+  root.__focusHandler = keyHandler;
+  document.addEventListener('keydown', keyHandler);
+  if(first) setTimeout(()=> first.focus(), 0);
+}
+function releaseFocusTrap(){ try{ if(_previouslyFocused && _previouslyFocused.focus) _previouslyFocused.focus(); }catch(e){} if(document && document.__focusHandler) document.removeEventListener('keydown', document.__focusHandler); }
+  if(!document.getElementById('user-info')) return;
   // if the login/register just redirected here, bootstrap from sessionStorage first
   try{
     const raw = sessionStorage.getItem('boot_user');
@@ -150,7 +233,25 @@ window.addEventListener('load', async ()=>{
   }catch(e){}
   // now attempt authoritative refresh from cookie (logs on failure)
   await init();
+  // bind unread button if present (pages that include main.js should attach this)
+  try{
+    // use shared handler from static/unread.js if available
+    try{ if(typeof attachUnreadHandlers === 'function') attachUnreadHandlers(); }catch(e){}
+  }catch(e){}
 });
+
+// If header is injected after initial parse, re-run init when it's loaded
+window.addEventListener('shared-header-loaded', async ()=>{
+  try{ if(document.getElementById('user-info')) await init(); }catch(e){}
+  try{ 
+    const adminBtn = document.getElementById('admin-open'); if(adminBtn) adminBtn.onclick = openAdmin; 
+    const adminCloseBtn = document.getElementById('admin-close'); if(adminCloseBtn) adminCloseBtn.onclick = ()=>{ const m = document.getElementById('admin-modal'); if(m) m.style.display='none' };
+  }catch(e){}
+  // ensure unread handler is bound for headers injected after initial load
+  try{ if(typeof attachUnreadHandlers === 'function') attachUnreadHandlers(); }catch(e){}
+});
+
+// openUnreadPanel is provided by static/unread.js now; no local copy here
 
 async function register(){
   const email = document.getElementById('email').value;
@@ -302,6 +403,8 @@ async function afterAuth(user){
   if(adminBtn){
     adminBtn.style.display = (user && user.is_admin) ? 'inline' : 'none';
   }
+  // render shared header user info
+  try{ renderUserInfo(user); }catch(e){}
   // still refresh authoritative data in background
   fetchMeAndMaybeShowAdmin();
   // load friends and incoming requests so UI is populated
@@ -361,18 +464,23 @@ const debugBtn = document.getElementById('debug-inspect'); if(debugBtn) debugBtn
 
 // admin UI
 async function openAdmin(){
-  const r = await fetch(BASE + '/admin/users', {headers:{'Authorization':'Bearer ' + token}});
-  if(r.status === 403){ showToast('admin required', 'error'); return }
-  const data = await r.json();
-  const ul = document.getElementById('admin-users'); ul.innerHTML = '';
-  for(const u of data.users){
-    const li = document.createElement('li');
-    li.textContent = `${u.id} - ${u.email} - ${u.username} - admin:${u.is_admin}`;
-    const btn = document.createElement('button'); btn.textContent = 'Delete';
-    btn.onclick = async ()=>{ await fetch(BASE + '/admin/users/delete', {method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer ' + token}, body: JSON.stringify({id: u.id})}); openAdmin(); }
-    li.appendChild(btn); ul.appendChild(li);
-  }
-  document.getElementById('admin-modal').style.display = 'block';
+  // prefer the shared admin UI if available
+  if(typeof window.openAdminPanel === 'function'){ return window.openAdminPanel(); }
+  try{
+    const r = await fetch(BASE + '/admin/users', {headers:{'Authorization':'Bearer ' + token}});
+    if(r.status === 403){ showToast('admin required', 'error'); return }
+    const data = await r.json();
+    const ul = document.getElementById('admin-users'); if(!ul) return;
+    ul.innerHTML = '';
+    for(const u of data.users){
+      const li = document.createElement('li');
+      li.textContent = `${u.id} - ${u.email} - ${u.username} - admin:${u.is_admin}`;
+      const btn = document.createElement('button'); btn.textContent = 'Delete';
+      btn.onclick = async ()=>{ await fetch(BASE + '/admin/users/delete', {method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer ' + token}, body: JSON.stringify({id: u.id})}); openAdmin(); }
+      li.appendChild(btn); ul.appendChild(li);
+    }
+    const m = document.getElementById('admin-modal'); if(m) m.style.display = 'block';
+  }catch(e){ console.error('openAdmin error', e); }
 }
 const adminOpenBtn = document.getElementById('admin-open'); if(adminOpenBtn) adminOpenBtn.onclick = openAdmin;
 const adminCloseBtn = document.getElementById('admin-close'); if(adminCloseBtn) adminCloseBtn.onclick = ()=>{ const m = document.getElementById('admin-modal'); if(m) m.style.display='none' }
