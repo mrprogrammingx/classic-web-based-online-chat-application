@@ -21,11 +21,39 @@ document.addEventListener('DOMContentLoaded', ()=>{
   const input = document.getElementById('message-input');
   const roomsSection = document.getElementById('rooms-section');
   const roomsToggle = document.getElementById('rooms-toggle');
+  const unreadTotalBtn = document.getElementById('unread-total');
 
   // runtime state
   let rooms = [];
   let contacts = [];
   let isDialog = false;
+  // track last seen total so we can animate on increase
+  let lastUnreadTotal = 0;
+  // timestamp of the most recent local send action (ms since epoch)
+  let lastLocalSendAt = 0;
+
+  // Unread panel behavior is implemented in the shared module static/unread.js
+  // Call the shared attachment helper if available so all pages use the same logic.
+  try{ if(typeof attachUnreadHandlers === 'function') attachUnreadHandlers(); }catch(e){}
+
+  // If the header is injected later, re-attach handlers via shared helper
+  window.addEventListener('shared-header-loaded', ()=>{ try{ if(typeof attachUnreadHandlers === 'function') attachUnreadHandlers(); }catch(e){} try{ const adminBtn = document.getElementById('admin-open'); if(adminBtn){ adminBtn.addEventListener && adminBtn.addEventListener('click', async ()=>{ /* admin binding exists in main.js as well */ }); } }catch(e){} });
+
+
+  // Admin UI: open admin panel when admin-open button clicked
+  const adminOpenBtn = document.getElementById('admin-open');
+  if(adminOpenBtn){
+    adminOpenBtn.addEventListener('click', async ()=>{
+      if(typeof window.openAdminPanel === 'function') return window.openAdminPanel();
+      // fallback: simple list
+      try{
+        const panel = await fetchJSON('/admin/users'); const users = (panel && panel.users) || [];
+        const root = document.getElementById('modal-root') || (function(){ const r=document.createElement('div'); r.id='modal-root'; document.body.appendChild(r); return r; })();
+        root.innerHTML = '';
+        const p = document.createElement('div'); p.className = 'admin-panel'; const ul = document.createElement('ul'); ul.style.listStyle='none'; ul.style.padding='0'; users.forEach(u=>{ const li = document.createElement('li'); li.textContent = `${u.id} - ${u.email}`; ul.appendChild(li); }); p.appendChild(ul); root.appendChild(p);
+      }catch(e){ console.warn('fallback admin open failed', e); }
+    });
+  }
 
   function renderRooms(){
     roomsList.innerHTML = '';
@@ -56,6 +84,9 @@ document.addEventListener('DOMContentLoaded', ()=>{
     contactsList.innerHTML = '';
     contacts.forEach(c=>{
       const li = document.createElement('li');
+
+        // after appending a message, refresh unread badges (keeps UI in sync when new messages arrive)
+        try{ if(typeof loadUnreadSummary === 'function') loadUnreadSummary(); }catch(e){}
       const title = document.createElement('span'); title.textContent = c.name; li.appendChild(title);
       const badge = document.createElement('span'); badge.className='unread-badge hidden'; badge.textContent='0'; li.appendChild(badge);
       li.dataset.id = c.id;
@@ -86,92 +117,23 @@ document.addEventListener('DOMContentLoaded', ()=>{
       const count = dialogsMap[String(id)] || 0;
       if(badge){ badge.textContent = String(count); badge.classList.toggle('hidden', count===0); }
     });
-  }
-
-  let currentRoom = null;
-  function selectRoom(r){
-    isDialog = false;
-    currentRoom = r;
-    roomTitle.textContent = r.name;
-    messagesEl.innerHTML = '';
-    // compact rooms into accordion style
-    roomsSection.classList.add('compacted');
-    // load messages for this room
-    loadRoomMessages(r.id);
-    // load members and presence
-    loadRoomMembers(r.id);
-    // refresh unread summary shortly after opening (server marks read when messages are loaded)
-    setTimeout(()=>{ try{ loadUnreadSummary(); }catch(e){} }, 400);
-  }
-  function openDialog(contact){
-    isDialog = true;
-    currentRoom = {id: contact.id, name: contact.name};
-    roomTitle.textContent = contact.name + ' (dialog)';
-    messagesEl.innerHTML = '';
-    loadDialogMessages(contact.id);
-    setTimeout(()=>{ try{ loadUnreadSummary(); }catch(e){} }, 400);
-  }
-
-  function appendMessage(msg){
-    const el = document.createElement('div');
-    el.className = 'message' + (msg.user==='me'? ' me':'');
-    // metadata (author)
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    if(msg.user && msg.user!=='system') meta.textContent = msg.user;
-    else if(msg.user_id) meta.textContent = 'user ' + msg.user_id;
-    else meta.textContent = '';
-    el.appendChild(meta);
-
-    // reply preview if present
-    if(msg.reply){
-      const rp = document.createElement('div');
-      rp.className = 'reply-preview';
-      const rpAuthor = document.createElement('div'); rpAuthor.className='reply-author'; rpAuthor.textContent = msg.reply.user_id ? ('user ' + msg.reply.user_id) : '';
-      const rpText = document.createElement('div'); rpText.className='reply-text'; rpText.textContent = msg.reply.text || '';
-      rp.appendChild(rpAuthor);
-      rp.appendChild(rpText);
-      el.appendChild(rp);
-    }
-
-    const body = document.createElement('div');
-    body.className = 'body';
-    body.textContent = msg.text;
-    el.appendChild(body);
-
-    // allow clicking a message to reply
-    el.addEventListener('click', ()=>{
-      const replyPreview = document.getElementById('reply-preview');
-      const replyAuthor = document.getElementById('reply-to-author');
-      const replyText = document.getElementById('reply-to-text');
-      if(msg.user || msg.user_id){
-        replyAuthor.textContent = msg.user || ('user ' + (msg.user_id||''));
-      } else replyAuthor.textContent = 'message';
-      replyText.textContent = msg.text || '';
-      replyPreview.style.display = 'flex';
-      const composer = document.getElementById('composer');
-      composer.dataset.replyTo = msg.id || '';
-    });
-    // render attachments if present
-    if(msg.files && msg.files.length){
-      const attWrap = document.createElement('div'); attWrap.className='attachment';
-      msg.files.forEach(f => {
-        const lower = (f.original_filename || f.path || '').toLowerCase();
-        const isImage = lower.match(/\.(png|jpe?g|gif|webp)$/);
-        const url = f.url || (`/dialogs/${f.to_id}/files/${f.id}`);
-        if(isImage){
-          const img = document.createElement('img');
-          img.src = url;
-          attWrap.appendChild(img);
-        } else {
-          const a = document.createElement('a'); a.href = url; a.className='file-link'; a.textContent = f.original_filename || 'file'; a.target='_blank';
-          attWrap.appendChild(a);
-        }
-      });
-      el.appendChild(attWrap);
-    }
-    // return element so caller can decide to append or prepend
-    return el;
+    // update aggregated unread total in header if present
+    try{
+      const total = (data.rooms||[]).reduce((s,r)=>s + (r.unread_count||0), 0) + (data.dialogs||[]).reduce((s,d)=>s + (d.unread_count||0), 0);
+      const btn = document.getElementById('unread-total');
+      const live = document.getElementById('unread-live');
+      if(btn){
+        // Always display the unread total. When zero, apply a muted style instead of hiding.
+        btn.classList.toggle('muted', total === 0);
+        btn.removeAttribute('aria-hidden');
+        btn.innerHTML = `<span class="unread-icon">📨</span><span class="unread-count">${total}</span>`;
+        let inlineBadge = btn.parentNode.querySelector('.unread-badge-inline');
+        if(!inlineBadge){ inlineBadge = document.createElement('span'); inlineBadge.className = 'unread-badge-inline'; btn.parentNode.appendChild(inlineBadge); }
+        inlineBadge.textContent = total > 99 ? '99+' : String(total);
+        inlineBadge.style.display = total > 0 ? 'inline-block' : 'none';
+        if(live) live.textContent = `You have ${total} unread messages`;
+      }
+    }catch(e){ console.warn('loadUnreadSummary failed', e); }
   }
 
   // autoscroll logic: only auto-scroll when user is at or near bottom
@@ -200,6 +162,12 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
   composer.addEventListener('submit', (e)=>{
     e.preventDefault();
+    try{ 
+      lastLocalSendAt = Date.now(); 
+      // subtle local pulse to acknowledge the user's send
+      const btn = document.getElementById('unread-total');
+      if(btn){ btn.classList.remove('pulse-local'); void btn.offsetWidth; btn.classList.add('pulse-local'); setTimeout(()=>btn.classList.remove('pulse-local'), 600); }
+    }catch(e){}
     const text = input.value.trim();
     const composerEl = document.getElementById('composer');
     const replyTo = composerEl.dataset.replyTo || null;
@@ -390,16 +358,25 @@ document.addEventListener('DOMContentLoaded', ()=>{
   // helper: basic fetch wrapper
   async function fetchJSON(url, opts){
     try{
+      // default to sending cookies for same-origin authenticated endpoints
+      opts = opts || {};
+      if(typeof opts.credentials === 'undefined') opts.credentials = 'include';
+      // ensure headers object exists
+      opts.headers = opts.headers || {};
+      try{ // allow tests to inject a bearer token into window.__AUTH_TOKEN which will be used for Authorization
+        if(typeof window !== 'undefined' && window.__AUTH_TOKEN && !opts.headers['Authorization']){
+          opts.headers['Authorization'] = 'Bearer ' + window.__AUTH_TOKEN;
+        }
+      }catch(e){}
       const r = await fetch(url, opts);
       if(!r.ok){
         console.warn('fetch failed', url, r.status);
         return null;
       }
-      return await r.json();
-    }catch(e){
-      console.error('fetch error', url, e);
-      return null;
-    }
+      // try to parse JSON, but return null on parse errors
+      const json = await r.json().catch(()=>null);
+      return json;
+    }catch(e){ console.warn('fetchJSON failed', e); return null; }
   }
 
   async function loadRooms(){
@@ -407,7 +384,10 @@ document.addEventListener('DOMContentLoaded', ()=>{
     if(data && data.rooms){
       rooms = data.rooms;
       renderRooms();
-      if(rooms.length) selectRoom(rooms[0]);
+      if(rooms.length) {
+        // Tests may set window.__TEST_SKIP_AUTOSELECT to prevent automatic room open
+        if(!(typeof window !== 'undefined' && window.__TEST_SKIP_AUTOSELECT)) selectRoom(rooms[0]);
+      }
     }
   }
 
@@ -575,6 +555,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
               });
             }catch(e){ sessionsList.innerHTML = '<li class="meta">Error loading sessions</li>'; }
           }
+          // show admin button when user is admin
+          try{ const adminBtn = document.getElementById('admin-open'); if(adminBtn) adminBtn.style.display = user.is_admin ? 'inline-flex' : 'none'; }catch(e){}
         }
       }
     }catch(e){ console.warn('refresh parse failed', e); }
