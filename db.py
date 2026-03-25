@@ -94,6 +94,13 @@ async def init_db():
         except Exception:
             # ignore if create index fails for any reason (older DBs etc.)
             pass
+        # create helpful indexes for user lookup (searches by username/email)
+        try:
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);")
+            await db.commit()
+        except Exception:
+            pass
         # run migrations for existing DB: add columns to sessions if missing
         cur = await db.execute("PRAGMA table_info('sessions')")
         cols = await cur.fetchall()
@@ -210,6 +217,22 @@ async def init_db():
         );
         ''')
         await db.commit()
+        # Note: we previously attempted to create an FTS5 virtual table here, but
+        # contentless FTS triggers can cause compatibility issues on some
+        # SQLite builds. We avoid creating FTS automatically; if you need FTS
+        # please create an FTS5 table and appropriate sync triggers manually.
+        # If an old users_fts virtual table or triggers exist from previous
+        # runs, try to remove them to avoid contentless-FTS errors when
+        # updating the users table.
+        try:
+            await db.execute('DROP TRIGGER IF EXISTS users_fts_insert')
+            await db.execute('DROP TRIGGER IF EXISTS users_fts_delete')
+            await db.execute('DROP TRIGGER IF EXISTS users_fts_update')
+            await db.execute('DROP TABLE IF EXISTS users_fts')
+            await db.commit()
+        except Exception:
+            # ignore any failures (older DBs or missing support)
+            pass
         # ensure index for presence queries (user_id + last_active) for fast aggregation
         try:
             await db.execute('CREATE INDEX IF NOT EXISTS idx_tab_presence_user_last_active ON tab_presence(user_id, last_active)')
