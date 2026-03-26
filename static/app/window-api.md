@@ -12,7 +12,7 @@ Public functions exported on window (common):
 - `window.initFileAttachments()` — Initialize file attachment UI. Implemented in `static/app/attachments.js`.
 - `window.handleComposerSubmit(ev)` — Composer submit handler used by `app.js`. Implemented in `static/app/composer.js`.
 - `window.initMessagesUi()` — Messages autoscroll and infinite-scroll wiring. Implemented in `static/app/messages-ui.js`.
-- `window.initAuthUi(root)` — Initialize auth-related UI (logout). Implemented in `static/app/auth.js`.
+- `window.initAuthUi(root)` — Initialize auth-related UI (logout). Implemented in `static/app/lib/auth.js`.
 - `window.initComposerUi(root)` — Composer-related small UI helpers (reply-cancel, attachment clear). Implemented in `static/app/composer-ui.js`.
 - `window.initSessionsUi(root)` — Session/header UI wiring (user dropdown, admin button, unread handlers). Implemented in `static/app/sessions.js`.
 - `window.t(key[, lang])`, `window.setLocale(lang)`, `window.addStrings(lang, obj)` — Minimal i18n helpers. Implemented in `static/app/i18n.js`.
