@@ -52,4 +52,9 @@ function createTabs() {
   return tabs;
 }
 
-document.addEventListener('DOMContentLoaded', initAdminUI);
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initAdminUI);
+} else {
+  // If the module was loaded after DOMContentLoaded, initialize immediately
+  initAdminUI();
+}
