@@ -8,6 +8,11 @@ const page = location.pathname;
 // the modal/toast containers still get the async modal/toast UX.
 function ensureUiRoots(){
   try{
+    if(window && typeof window.ensureUiRoots === 'function'){
+      return window.ensureUiRoots();
+    }
+  }catch(e){}
+  try{
     if(!document.getElementById('modal-root')){
       const m = document.createElement('div'); m.id = 'modal-root'; document.body.appendChild(m);
     }
@@ -20,6 +25,11 @@ if(document.readyState === 'loading') window.addEventListener('DOMContentLoaded'
 
 // Autofocus email input on simple auth pages and submit on Enter
 function setupAuthPageHelpers(){
+  try{
+    if(window && typeof window.initAuthPages === 'function'){
+      return window.initAuthPages();
+    }
+  }catch(e){}
   try{
     const email = document.getElementById('email');
     if(email) email.focus();
@@ -51,6 +61,7 @@ function t(key, lang='en'){ return (_STRINGS[lang] && _STRINGS[lang][key]) || _S
 // Polished modal alert for pages that only load main.js (login/register).
 // Returns a Promise resolved when user dismisses the dialog.
 function showAlert(body, title){
+  try{ if(window && typeof window.showModal === 'function'){ return window.showModal({ title: title || '', body: body || '', confirmText: t('ok') }); } }catch(e){}
   return new Promise((resolve)=>{
     let root = document.getElementById('modal-root');
     if(!root){ try{ root = document.createElement('div'); root.id = 'modal-root'; document.body.appendChild(root); }catch(e){} }
@@ -81,6 +92,7 @@ function showAlert(body, title){
 // Modal & toast utilities (use DOM roots if present, fall back to native dialogs)
 // Note: synchronous confirm fallback removed. Use async showModal(opts) instead.
 function showToast(msg, type='error', timeout=4000){
+  try{ if(window && typeof window.showToast === 'function') return window.showToast(msg, type, timeout); }catch(e){}
   let root = document.getElementById('toast-root');
   // if the page didn't include a toast root, create a temporary one so we don't rely on window.alert
   if(!root){
@@ -227,7 +239,7 @@ function releaseFocusTrap(){ try{ if(_previouslyFocused && _previouslyFocused.fo
   try{
     const bt = sessionStorage.getItem('boot_token');
     const bj = sessionStorage.getItem('boot_jti');
-    if(bt){ token = bt; }
+    if(bt){ token = bt; try{ window.appState = window.appState || {}; window.appState.token = token; }catch(e){} }
     if(bj){ jti = bj; }
     sessionStorage.removeItem('boot_token'); sessionStorage.removeItem('boot_jti');
   }catch(e){}
@@ -243,8 +255,8 @@ function releaseFocusTrap(){ try{ if(_previouslyFocused && _previouslyFocused.fo
 // If header is injected after initial parse, re-run init when it's loaded
 window.addEventListener('shared-header-loaded', async ()=>{
   try{ if(document.getElementById('user-info')) await init(); }catch(e){}
-  try{ 
-    const adminBtn = document.getElementById('admin-open'); if(adminBtn) adminBtn.onclick = openAdmin; 
+  try{
+    const adminBtn = document.getElementById('admin-open'); if(adminBtn) adminBtn.onclick = ()=>{ try{ if(window && typeof window.openAdminPanel === 'function') return window.openAdminPanel(); if(window && typeof window.openAdminFallback === 'function') return window.openAdminFallback(); return openAdmin(); }catch(e){ return openAdmin(); } };
     const adminCloseBtn = document.getElementById('admin-close'); if(adminCloseBtn) adminCloseBtn.onclick = ()=>{ const m = document.getElementById('admin-modal'); if(m) m.style.display='none' };
   }catch(e){}
   // ensure unread handler is bound for headers injected after initial load
@@ -254,53 +266,46 @@ window.addEventListener('shared-header-loaded', async ()=>{
 // openUnreadPanel is provided by static/unread.js now; no local copy here
 
 async function register(){
-  const email = document.getElementById('email').value;
-  const username = document.getElementById('username').value;
-  const password = document.getElementById('password').value;
+  try{ if(window && typeof window.register === 'function') return window.register(); }catch(e){}
+  // fallback to original inline implementation
+  const emailEl = document.getElementById('email'); const usernameEl = document.getElementById('username'); const passwordEl = document.getElementById('password');
+  const email = emailEl ? emailEl.value : '';
+  const username = usernameEl ? usernameEl.value : '';
+  const password = passwordEl ? passwordEl.value : '';
   const r = await fetch(BASE + '/register', {method:'POST', credentials: 'include', headers:{'content-type':'application/json'}, body: JSON.stringify({email, username, password})});
   const data = await r.json();
   if(r.status===200){
     token = data.token;
     jti = data.token && parseJwt(data.token).jti;
-    // store returned user and token so home can bootstrap immediately (in case cookie isn't present yet)
-    try{
-      sessionStorage.setItem('boot_user', JSON.stringify(data.user));
-      sessionStorage.setItem('boot_token', data.token || '');
-      const pj = data.token ? JSON.parse(atob(data.token.split('.')[1])) : {};
-      sessionStorage.setItem('boot_jti', pj.jti || '');
-    }catch(e){}
-  // redirect to home which will call /refresh to bootstrap from cookie
-  location.href = siteHref('homeHref', '/static/home.html');
+    try{ sessionStorage.setItem('boot_user', JSON.stringify(data.user)); sessionStorage.setItem('boot_token', data.token || ''); const pj = data.token ? JSON.parse(atob(data.token.split('.')[1])) : {}; sessionStorage.setItem('boot_jti', pj.jti || ''); }catch(e){}
+    location.href = siteHref('homeHref', '/static/home.html');
   } else {
     try{ await showAlert(JSON.stringify(data), 'Registration failed'); }catch(e){}
   }
 }
 
 async function login(){
-  const email = document.getElementById('email').value;
-  const password = document.getElementById('password').value;
+  try{ if(window && typeof window.login === 'function') return window.login(); }catch(e){}
+  const emailEl = document.getElementById('email'); const passwordEl = document.getElementById('password');
+  const email = emailEl ? emailEl.value : '';
+  const password = passwordEl ? passwordEl.value : '';
   const r = await fetch(BASE + '/login', {method:'POST', credentials: 'include', headers:{'content-type':'application/json'}, body: JSON.stringify({email, password})});
   const data = await r.json();
   if(r.status===200){
     token = data.token;
     jti = data.token && parseJwt(data.token).jti;
-    try{
-      sessionStorage.setItem('boot_user', JSON.stringify(data.user));
-      sessionStorage.setItem('boot_token', data.token || '');
-      const pj = data.token ? JSON.parse(atob(data.token.split('.')[1])) : {};
-      sessionStorage.setItem('boot_jti', pj.jti || '');
-    }catch(e){}
-  // redirect to home which will call /refresh to bootstrap from cookie
-  location.href = siteHref('homeHref', '/static/home.html');
+    try{ sessionStorage.setItem('boot_user', JSON.stringify(data.user)); sessionStorage.setItem('boot_token', data.token || ''); const pj = data.token ? JSON.parse(atob(data.token.split('.')[1])) : {}; sessionStorage.setItem('boot_jti', pj.jti || ''); }catch(e){}
+    location.href = siteHref('homeHref', '/static/home.html');
   } else {
     try{ await showAlert(JSON.stringify(data), 'Login failed'); }catch(e){}
   }
 }
 
 async function listSessions(){
+  try{ if(window && typeof window.loadSessions === 'function') return window.loadSessions(); }catch(e){}
   const r = await fetch(BASE + '/sessions', {headers:{'Authorization': 'Bearer ' + token}});
   const data = await r.json();
-  const ul = document.getElementById('sessions');
+  const ul = document.getElementById('sessions'); if(!ul) return;
   ul.innerHTML = '';
   for(const s of data.sessions){
     const li = document.createElement('li');
@@ -317,18 +322,21 @@ async function listSessions(){
 }
 
 function parseJwt (token) {
-    try{
-        return JSON.parse(atob(token.split('.')[1]));
-    }catch(e){return {}};
+  try{ if(window && typeof window.parseJwt === 'function' && window.parseJwt !== parseJwt) return window.parseJwt(token); }catch(e){}
+  try{
+    return JSON.parse(atob(token.split('.')[1]));
+  }catch(e){return {}};
 }
 
 // helper to read canonical site hrefs exposed by header-loader (falls back to provided default)
 function siteHref(key, fallback){
+  try{ if(window && typeof window.siteHref === 'function') return window.siteHref(key, fallback); }catch(e){}
   try{ if(window && window.SITE_CONFIG && window.SITE_CONFIG[key]) return window.SITE_CONFIG[key]; }catch(e){}
   return fallback;
 }
 
 function authHeaders(contentType){
+  try{ if(window && typeof window.authHeaders === 'function' && window.authHeaders !== authHeaders) return window.authHeaders(contentType); }catch(e){}
   const h = {};
   if(contentType) h['Content-Type'] = contentType;
   if(token) h['Authorization'] = 'Bearer ' + token;
@@ -336,6 +344,7 @@ function authHeaders(contentType){
 }
 
 function showStatus(txt, visible=true, timeout=4000){
+  try{ if(window && typeof window.showStatus === 'function') return window.showStatus(txt, visible, timeout); }catch(e){}
   const el = document.getElementById('status');
   if(!el) return;
   el.style.display = visible ? 'block' : 'none';
@@ -344,27 +353,23 @@ function showStatus(txt, visible=true, timeout=4000){
 }
 
 function onLogin(user){
-  const meEl = document.getElementById('me');
-  if(meEl){
-    meEl.style.display='block';
-    const nameEl = document.getElementById('me-name'); if(nameEl) nameEl.textContent = user.username;
-  }
-  startHeartbeat();
-  // start presence polling for this user
-  try{ startPresencePolling(user.id); }catch(e){}
+  try{ if(window && typeof window.onLogin === 'function') return window.onLogin(user); }catch(e){}
+  try{
+    const meEl = document.getElementById('me');
+    if(meEl){ meEl.style.display='block'; const nameEl = document.getElementById('me-name'); if(nameEl) nameEl.textContent = user.username; }
+  }catch(e){}
+  try{ if(window && typeof window.startHeartbeat === 'function' && window.startHeartbeat !== startHeartbeat) window.startHeartbeat(); else startHeartbeat(); }catch(e){}
+  try{ if(window && typeof window.startPresencePolling === 'function' && window.startPresencePolling !== startPresencePolling) window.startPresencePolling(user.id); else startPresencePolling(user.id); }catch(e){}
 }
 
 async function fetchMeAndMaybeShowAdmin(){
+  try{ if(window && typeof window.fetchMeAndMaybeShowAdmin === 'function' && window.fetchMeAndMaybeShowAdmin !== fetchMeAndMaybeShowAdmin) return window.fetchMeAndMaybeShowAdmin(); }catch(e){}
   try{
     const r = await fetch(BASE + '/me', {headers:{'Authorization':'Bearer ' + token}});
     if(r.status !== 200) return;
     const data = await r.json();
     const u = data.user;
-    if(u && u.is_admin){
-      document.getElementById('admin-open').style.display = 'inline';
-    } else {
-      document.getElementById('admin-open').style.display = 'none';
-    }
+    try{ const el = document.getElementById('admin-open'); if(el) el.style.display = (u && u.is_admin) ? 'inline' : 'none'; }catch(e){}
   }catch(e){ console.warn('failed to fetch /me', e) }
 }
 
@@ -380,7 +385,8 @@ function startHeartbeat(){
 
 let _presenceInterval = null;
 function startPresencePolling(userId){
-  // update presence immediately and then every 10s
+  try{ if(window && typeof window.startPresencePolling === 'function') return window.startPresencePolling(userId); }catch(e){}
+  // update presence immediately and then every 10s (local fallback)
   async function update(){
     try{
       const r = await fetch(BASE + '/presence/' + userId);
@@ -492,8 +498,9 @@ const adminOpenBtn = document.getElementById('admin-open'); if(adminOpenBtn) adm
 const adminCloseBtn = document.getElementById('admin-close'); if(adminCloseBtn) adminCloseBtn.onclick = ()=>{ const m = document.getElementById('admin-modal'); if(m) m.style.display='none' }
 
 async function loadFriends(){
+  try{ if(window && typeof window.loadFriends === 'function' && window.loadFriends !== loadFriends) return window.loadFriends(); }catch(e){}
   try{
-  const r = await fetch(BASE + '/friends', {credentials: 'include', headers: authHeaders()});
+    const r = await fetch(BASE + '/friends', {credentials: 'include', headers: authHeaders()});
     if(r.status !== 200) return;
     const data = await r.json();
     const ul = document.getElementById('friends-list'); if(!ul) return;
@@ -501,8 +508,8 @@ async function loadFriends(){
     for(const f of data.friends){
       const li = document.createElement('li');
       li.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:gray;margin-right:8px;vertical-align:middle" id="friend-dot-${f.id}"></span> ${f.username} (${f.email}) <button data-id="${f.id}" class="remove-btn">Remove</button> <button data-id="${f.id}" class="ban-btn">Ban</button>`;
-  const btn = li.querySelector('.remove-btn'); btn.onclick = async ()=>{ try{ btn.disabled = true; showStatus('Removing friend...'); console.log('POST /friends/remove', { friend_id: f.id }); const r = await fetch(BASE + '/friends/remove', {method:'POST', credentials: 'include', headers: authHeaders('application/json'), body: JSON.stringify({friend_id: f.id})}); console.log('/friends/remove response', r.status, await r.clone().text()); if(r.status===200) await loadFriends(); else { const body = await r.json().catch(()=>null); showStatus('Failed: ' + JSON.stringify(body)); showToast(JSON.stringify(body), 'error'); } }catch(e){ showToast('failed to remove', 'error') } finally{ btn.disabled = false } }
-  const banBtn = li.querySelector('.ban-btn'); banBtn.onclick = async ()=>{ try{ const ok = await showModal({title: 'Ban user', body: 'Ban this user? This action cannot be undone.', confirmText: 'Ban', cancelText: 'Keep'}); if(!ok) return; banBtn.disabled = true; showStatus('Sending ban...'); console.log('POST /ban', { banned_id: f.id }); const r = await fetch(BASE + '/ban', {method:'POST', credentials: 'include', headers: authHeaders('application/json'), body: JSON.stringify({banned_id: f.id})}); console.log('/ban response', r.status, await r.clone().text()); if(r.status===200) await loadFriends(); else { const body = await r.json().catch(()=>null); showStatus('Failed: ' + JSON.stringify(body)); showToast(JSON.stringify(body), 'error'); } }catch(e){ showToast('failed to ban', 'error') } finally{ banBtn.disabled = false } }
+      const btn = li.querySelector('.remove-btn'); btn.onclick = async ()=>{ try{ btn.disabled = true; showStatus('Removing friend...'); console.log('POST /friends/remove', { friend_id: f.id }); const r = await fetch(BASE + '/friends/remove', {method:'POST', credentials: 'include', headers: authHeaders('application/json'), body: JSON.stringify({friend_id: f.id})}); console.log('/friends/remove response', r.status, await r.clone().text()); if(r.status===200) await loadFriends(); else { const body = await r.json().catch(()=>null); showStatus('Failed: ' + JSON.stringify(body)); showToast(JSON.stringify(body), 'error'); } }catch(e){ showToast('failed to remove', 'error') } finally{ btn.disabled = false } }
+      const banBtn = li.querySelector('.ban-btn'); banBtn.onclick = async ()=>{ try{ const ok = await showModal({title: 'Ban user', body: 'Ban this user? This action cannot be undone.', confirmText: 'Ban', cancelText: 'Keep'}); if(!ok) return; banBtn.disabled = true; showStatus('Sending ban...'); console.log('POST /ban', { banned_id: f.id }); const r = await fetch(BASE + '/ban', {method:'POST', credentials: 'include', headers: authHeaders('application/json'), body: JSON.stringify({banned_id: f.id})}); console.log('/ban response', r.status, await r.clone().text()); if(r.status===200) await loadFriends(); else { const body = await r.json().catch(()=>null); showStatus('Failed: ' + JSON.stringify(body)); showToast(JSON.stringify(body), 'error'); } }catch(e){ showToast('failed to ban', 'error') } finally{ banBtn.disabled = false } }
       ul.appendChild(li);
       // fetch presence for friend and color the dot
       (async (fid)=>{
@@ -525,6 +532,8 @@ async function loadFriends(){
 
 async function loadIncomingRequests(){
   try{
+    // if an extracted implementation is present and it's not this function, delegate
+    if(window && typeof window.loadIncomingRequests === 'function' && window.loadIncomingRequests !== loadIncomingRequests) return window.loadIncomingRequests();
   const r = await fetch(BASE + '/friends/requests', {credentials: 'include', headers: authHeaders()});
     if(r.status !== 200) return;
     const data = await r.json();
