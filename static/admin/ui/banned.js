@@ -36,9 +36,13 @@ export async function renderBanned(container) {
   container.innerHTML = '';
 
   container.appendChild(createControls(() => renderBanned(container)));
-  container.appendChild(createTable(users, { ...actions, rowStart }));
+  const listWrap = document.createElement('div');
+  listWrap.className = 'admin-list';
+  listWrap.appendChild(createTable(users, { ...actions, rowStart }));
 
   // If backend returns total in data.total, use it; otherwise pager will still allow prev/next
   const total = (res.data && res.data.total) || users.length;
-  container.appendChild(createPager(total, () => renderBanned(container)));
+  listWrap.appendChild(createPager(total, () => renderBanned(container)));
+
+  container.appendChild(listWrap);
 }
