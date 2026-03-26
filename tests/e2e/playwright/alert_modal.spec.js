@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures');
 
 // This test ensures that when login fails, the polished alert modal appears and keyboard works
 test('login failure shows alert modal and responds to keyboard (focus trapping)', async ({ page }) => {

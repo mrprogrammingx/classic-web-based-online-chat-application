@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures');
 const helpers = require('./helpers');
 
 // Smoke test: register a user via API, set the server-issued token cookie in the browser

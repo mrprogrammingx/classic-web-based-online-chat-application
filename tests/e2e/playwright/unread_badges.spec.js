@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures');
 // Smoke test: two users, A sends message to room, B sees unread badge, opens room and badge clears
 
 test('unread badges update on new messages and clear on open', async ({ page, context, request }) => {

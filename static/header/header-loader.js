@@ -42,7 +42,11 @@
   // insert small skeleton immediately so early scripts can find the DOM ids
     ph.innerHTML = `<header class="topmenu"><div class="brand">${escapeHtml(cfg.brand)}</div><nav class="topnav"><div class="nav-left"><a href="${escapeHtml(cfg.mainHref)}" class="btn btn-secondary" id="btn-back-to-chat">${escapeHtml(cfg.mainButtonText)}</a></div><div id="user-info" class="user-info" aria-live="polite"></div><div id="notifications" class="nav-notifications"><button id="unread-total" class="unread-total" title="Unread notifications" aria-live="polite" aria-atomic="true"><span class="unread-icon">📨</span><span class="unread-count">0</span></button><span id="unread-live" class="sr-only" aria-live="polite"></span></div></nav></header>`;
 
-    return fetch('/static/header/header.html');
+  // header fragment may be served from either /header/header.html or
+  // /static/header/header.html depending on how the server is configured.
+  // Try the shorter path first; if the response is not OK (404), fetch the
+  // static path as a fallback.
+  return fetch('/header/header.html').then(r=>{ if(r && r.ok) return r; return fetch('/static/header/header.html'); }).catch(()=> fetch('/static/header/header.html'));
   }).then(r=>r.text()).then(html=>{
     try{
       // parse fetched fragment into a temp container

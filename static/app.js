@@ -1,35 +1,30 @@
 document.addEventListener('DOMContentLoaded', ()=>{
   // Ensure modal/toast root containers exist so pages without explicit markup still get modals/toasts
-  try{
-    if(!document.getElementById('modal-root')){
-      const m = document.createElement('div'); m.id = 'modal-root'; document.body.appendChild(m);
+  (function(){
+    // app.js: lightweight glue. delegate small UI bits to extracted modules when available.
+  try{ if(typeof window.initAuthUi === 'function') window.initAuthUi(document); }catch(e){}
+  try{ if(typeof window.initComposerUi === 'function') window.initComposerUi(document); }catch(e){}
+  try{ if(window && typeof window.initSessionsUi === 'function') window.initSessionsUi(document); }catch(e){}
+    // ensure t() is present
+    if(typeof window.t !== 'function'){
+      try{ window.t = window.t || function(k){ return (window._STRINGS && window._STRINGS.en && window._STRINGS.en[k]) || k; }; }catch(e){}
     }
-    if(!document.getElementById('toast-root')){
-      const t = document.createElement('div'); t.id = 'toast-root'; document.body.appendChild(t);
-    }
-  }catch(e){}
 
-  // minimal i18n (kept small and consistent with main.js)
-  window._STRINGS = window._STRINGS || { en: { ok: 'OK', cancel: 'Cancel', ban: 'Ban', keep: 'Keep', revoke: 'Revoke' } };
-  function t(key, lang='en'){ return (window._STRINGS[lang] && window._STRINGS[lang][key]) || window._STRINGS.en[key] || key; }
-  const roomsList = document.getElementById('rooms-list');
-  const contactsList = document.getElementById('contacts-list');
-  const membersList = document.getElementById('members-list');
-  const messagesEl = document.getElementById('messages');
-  // expose to extracted modules which use window.messagesEl
-  try{ window.messagesEl = messagesEl; }catch(e){}
-  const roomTitle = document.getElementById('room-title');
-  const composer = document.getElementById('composer');
-  const input = document.getElementById('message-input');
-  const roomsSection = document.getElementById('rooms-section');
-  const roomsToggle = document.getElementById('rooms-toggle');
-  const unreadTotalBtn = document.getElementById('unread-total');
-
-  // runtime state
-  let rooms = [];
-  let contacts = [];
-  let isDialog = false;
-  // track last seen total so we can animate on increase
+    // ...existing app bootstrapping and shims remain below (unchanged)
+    // ...existing code ...
+  })();
+    const roomsList = document.getElementById('rooms-list');
+    const contactsList = document.getElementById('contacts-list');
+    const membersList = document.getElementById('members-list');
+    const messagesEl = document.getElementById('messages');
+    // expose to extracted modules which use window.messagesEl
+    try{ window.messagesEl = messagesEl; }catch(e){}
+    const roomTitle = document.getElementById('room-title');
+    const composer = document.getElementById('composer');
+    const input = document.getElementById('message-input');
+    const roomsSection = document.getElementById('rooms-section');
+    const roomsToggle = document.getElementById('rooms-toggle');
+    const unreadTotalBtn = document.getElementById('unread-total');
   let lastUnreadTotal = 0;
   // timestamp of the most recent local send action (ms since epoch)
   let lastLocalSendAt = 0;
@@ -39,45 +34,13 @@ document.addEventListener('DOMContentLoaded', ()=>{
   try{ if(typeof attachUnreadHandlers === 'function') attachUnreadHandlers(); }catch(e){}
 
   // If the header is injected later, re-attach handlers via shared helper
-  window.addEventListener('shared-header-loaded', ()=>{ try{ if(typeof attachUnreadHandlers === 'function') attachUnreadHandlers(); }catch(e){} try{ const adminBtn = document.getElementById('admin-open'); if(adminBtn){ adminBtn.addEventListener && adminBtn.addEventListener('click', async ()=>{ /* admin binding exists in main.js as well */ }); } }catch(e){} });
+  window.addEventListener('shared-header-loaded', ()=>{ try{ if(typeof attachUnreadHandlers === 'function') attachUnreadHandlers(); }catch(e){} try{ const adminBtn = document.getElementById('admin-open'); if(adminBtn){ adminBtn.addEventListener && adminBtn.addEventListener('click', async ()=>{ try{ if(window && typeof window.openAdminPanel === 'function') return window.openAdminPanel(); }catch(e){} }); } }catch(e){} });
 
 
-  // Admin UI: open admin panel when admin-open button clicked
-  const adminOpenBtn = document.getElementById('admin-open');
-  if(adminOpenBtn){
-    adminOpenBtn.addEventListener('click', async ()=>{
-      if(typeof window.openAdminPanel === 'function') return window.openAdminPanel();
-      // fallback: simple list
-      try{
-        const panel = await fetchJSON('/admin/users'); const users = (panel && panel.users) || [];
-        const root = document.getElementById('modal-root') || (function(){ const r=document.createElement('div'); r.id='modal-root'; document.body.appendChild(r); return r; })();
-        root.innerHTML = '';
-        const p = document.createElement('div'); p.className = 'admin-panel'; const ul = document.createElement('ul'); ul.style.listStyle='none'; ul.style.padding='0'; users.forEach(u=>{ const li = document.createElement('li'); li.textContent = `${u.id} - ${u.email}`; ul.appendChild(li); }); p.appendChild(ul); root.appendChild(p);
-      }catch(e){ console.warn('fallback admin open failed', e); }
-    });
-  }
+  // session/header UI is delegated to static/app/sessions.js (initSessionsUi)
 
-  // autoscroll logic: only auto-scroll when user is at or near bottom
-  window.autoscroll = true;
-  function userIsAtBottom(){
-    const threshold = 40; // px
-    try{ return window.messagesEl.scrollHeight - window.messagesEl.scrollTop - window.messagesEl.clientHeight < threshold; }catch(e){ return true; }
-  }
-  try{ window.messagesEl.addEventListener('scroll', ()=>{
-    // if user scrolls up, disable autoscroll
-    window.autoscroll = userIsAtBottom();
-    // infinite scroll trigger: when near top, load older messages
-    try{
-      if(window.messagesEl.scrollTop < 50 && currentRoom){
-        // load older messages
-        if(isDialog){
-          loadDialogMessages(currentRoom.id, {before: window.earliestTimestamp, prepend: true});
-        } else {
-          loadRoomMessages(currentRoom.id, {before: window.earliestTimestamp, prepend: true});
-        }
-      }
-    }catch(e){}
-  }); }catch(e){}
+  // initialize messages UI (autoscroll + infinite-scroll) - implemented in static/app/messages-ui.js
+  try{ if(window && typeof window.initMessagesUi === 'function') window.initMessagesUi(); }catch(e){}
 
   // track earliest message timestamp currently rendered for infinite scroll
   // expose timestamps to extracted rooms module
@@ -99,65 +62,12 @@ document.addEventListener('DOMContentLoaded', ()=>{
     }
   });
 
-  // inline emoji picker
-  const emojiBtn = document.getElementById('emoji-btn');
-  const emojiPicker = document.getElementById('emoji-picker');
-  const emojis = ['😀','😁','😂','🤣','😊','😍','😎','😅','🙂','😉','🙃','😘','🤔','😴','😡','👍','👎','🙏','🎉','🔥','💯','🚀','🌟','🍕','☕️','📎','📷','🖼️','🎵','✅','❌','➕','➖'];
-  function buildEmojiPicker(){
-    if(!emojiPicker) return;
-    emojiPicker.innerHTML = '';
-    const grid = document.createElement('div'); grid.className='emoji-grid';
-    emojis.forEach(e=>{
-      const btn = document.createElement('button'); btn.type='button'; btn.textContent = e;
-      btn.addEventListener('click', ()=>{
-        const pos = input.selectionStart || input.value.length;
-        input.value = input.value.slice(0,pos) + e + input.value.slice(pos);
-        input.focus();
-        emojiPicker.style.display = 'none';
-      });
-      grid.appendChild(btn);
-    });
-    emojiPicker.appendChild(grid);
-  }
-  buildEmojiPicker();
-  if(emojiBtn){
-    emojiBtn.addEventListener('click', (ev)=>{
-      ev.stopPropagation();
-      if(!emojiPicker) return;
-      emojiPicker.style.display = emojiPicker.style.display === 'block' ? 'none' : 'block';
-    });
-  }
-  // hide picker when clicking elsewhere
-  document.addEventListener('click', (ev)=>{ if(emojiPicker) emojiPicker.style.display='none'; });
+  // initialize emoji picker (extracted to static/app/emoji.js)
+  try{ if(window && typeof window.initEmojiPicker === 'function') window.initEmojiPicker(); }catch(e){}
 
-  // file attachment handling with upload guard and spinner
-  const fileInput = document.getElementById('file-input');
-  let uploading = false;
-  const uploadingIndicator = document.getElementById('uploading-indicator');
-  // file selection preview: do not auto-upload; user will send with composer submit which uses atomic endpoint
-  if(fileInput){
-    const selectedWrap = document.createElement('div'); selectedWrap.className='selected-file';
-    fileInput.parentNode.insertBefore(selectedWrap, fileInput.nextSibling);
-    fileInput.addEventListener('change', ()=>{
-      selectedWrap.innerHTML = '';
-      if(!fileInput.files || fileInput.files.length === 0) return;
-      const file = fileInput.files[0];
-      const info = document.createElement('div'); info.textContent = `Selected: ${file.name} `;
-      const remove = document.createElement('button'); remove.type='button'; remove.textContent='Remove';
-      remove.addEventListener('click', ()=>{ fileInput.value=''; selectedWrap.innerHTML=''; });
-      info.appendChild(remove);
-      selectedWrap.appendChild(info);
-    });
-  }
+  // initialize file attachment UI (extracted to static/app/attachments.js)
+  try{ if(window && typeof window.initFileAttachments === 'function') window.initFileAttachments(); }catch(e){}
 
-  // reply cancel
-  const replyCancel = document.getElementById('reply-cancel');
-  if(replyCancel){
-    replyCancel.addEventListener('click', ()=>{
-      const rp = document.getElementById('reply-preview'); if(rp) rp.style.display='none';
-      const composerEl = document.getElementById('composer'); delete composerEl.dataset.replyTo;
-    });
-  }
 
   // helper: delegate to extracted API module if present
   async function fetchJSON(url, opts){
@@ -177,38 +87,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
   async function loadDialogMessages(otherId, opts){ try{ if(window && typeof window.loadDialogMessages === 'function') return await window.loadDialogMessages(otherId, opts); }catch(e){} }
 
-  // bootstrap auth via /refresh; if unauthenticated redirect to login page
-  async function bootstrap(){
-    const r = await fetch('/refresh', {method: 'POST', credentials: 'include'}).catch(()=>null);
-    if(!r || r.status === 401){
-      // redirect to the hosted login page which will set cookie on success
-  location.href = '/static/auth/login.html';
-      return;
-    }
-    // if logged in, the response contains token and user metadata
-    try{
-      const body = await r.json();
-      const user = body.user;
-      if(user){
-        const ui = document.getElementById('user-info');
-        if(ui){
-          try{
-            if(window && typeof window.renderUserInfo === 'function'){
-              window.renderUserInfo(user);
-            } else {
-              // minimal fallback
-              ui.textContent = escapeHtml(user.username || user.email || ('user'+user.id));
-            }
-          }catch(e){ console.warn('renderUserInfo failed', e); }
-        }
-      }
-    }catch(e){ console.warn('refresh parse failed', e); }
-    // ready: load data
-    await loadRooms();
-    await loadContacts();
-    // update unread notification badges
-    try{ await loadUnreadSummary(); }catch(e){}
-  }
+  // bootstrap loader moved to static/app/bootstrap.js
+  try{ if(window && typeof window.bootstrap === 'function') window.bootstrap(); }catch(e){}
 
   // simple escape for username rendering
   function escapeHtml(str){
@@ -257,21 +137,11 @@ document.addEventListener('DOMContentLoaded', ()=>{
     try{ const rt = document.getElementById('toast-root') || (function(){ const r=document.createElement('div'); r.id='toast-root'; document.body.appendChild(r); return r; })(); const cont = rt.querySelector('.toast-container') || (function(){ const c=document.createElement('div'); c.className='toast-container'; rt.appendChild(c); return c; })(); const t = document.createElement('div'); t.className='toast'; t.textContent = msg; cont.appendChild(t); setTimeout(()=>t.remove(), timeout); }catch(e){ console.warn('showToast fallback failed', msg); }
   }
 
-  // wire logout button
-  const logoutBtn = document.getElementById('btn-logout');
-  if(logoutBtn){
-    logoutBtn.addEventListener('click', async ()=>{
-      try{
-        await fetch('/logout', {method:'POST', credentials:'include'});
-      }catch(e){}
-      // redirect to login page
-  location.href = '/static/auth/login.html';
-    });
-  }
+  // reply-cancel and logout behavior are delegated to extracted modules
+  // initAuthUi and initComposerUi are called during boot above (if present)
 
   // expose UI hooks for extracted modules (rooms.js expects these on window)
   try{ window.selectRoom = selectRoom; window.openDialog = openDialog; window.renderRooms = renderRooms; window.renderContacts = renderContacts; window.renderMembers = renderMembers; }catch(e){}
-  bootstrap();
 
   roomsToggle.addEventListener('click', ()=>{
     roomsSection.classList.toggle('compacted');

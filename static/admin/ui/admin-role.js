@@ -28,10 +28,14 @@ export async function renderAdminRole(container) {
   container.innerHTML = '';
 
   container.appendChild(createControls(() => renderAdminRole(container)));
+  const listWrap = document.createElement('div');
+  listWrap.className = 'admin-list';
 
   const actions = createUserActions({ getBannedIds: (u) => (data.banned_ids || []).includes(u.id), refresh: async () => renderAdminRole(container) });
   const rowStart = (state.users.page - 1) * state.users.perPage;
-  container.appendChild(createTable(data.users || [], { ...actions, rowStart }));
+  const table = createTable(data.users || [], { ...actions, rowStart });
+  listWrap.appendChild(table);
+  listWrap.appendChild(createPager(data.total || 0, () => renderAdminRole(container)));
 
-  container.appendChild(createPager(data.total || 0, () => renderAdminRole(container)));
+  container.appendChild(listWrap);
 }

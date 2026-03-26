@@ -36,8 +36,19 @@
         }catch(e){}
       }
       meta.appendChild(document.createTextNode(' ')); meta.appendChild(time);
-      const body = document.createElement('div'); body.className = 'body'; body.textContent = m.text || '';
+      const body = document.createElement('div'); body.className = 'body';
+      // if this message has a reply preview object, render it above the body
+      if(m.reply){
+        try{
+          const rp = document.createElement('div'); rp.className = 'reply-preview';
+          const rpt = document.createElement('div'); rpt.className = 'reply-text'; rpt.textContent = m.reply.text || '';
+          rp.appendChild(rpt);
+          wrap.appendChild(rp);
+        }catch(e){}
+      }
+      body.textContent = m.text || '';
       wrap.appendChild(meta); wrap.appendChild(body);
+      try{ if(m.id) wrap.dataset.id = String(m.id); }catch(e){}
       return wrap;
     }catch(e){ console.warn('appendMessage failed', e); const r = document.createElement('div'); r.textContent = m && (m.text || JSON.stringify(m)) || ''; return r; }
   }

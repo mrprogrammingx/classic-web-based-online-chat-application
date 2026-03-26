@@ -1,3 +1,29 @@
+Window API Contract
+===================
+
+This document lists the small, global runtime contract used by the application's no-build module split. Each extracted script registers a minimal API on `window` so `app.js` and other modules can interoperate without a bundler.
+
+Public functions exported on window (common):
+
+- `window.fetchJSON(url, opts)` — Promise that resolves to parsed JSON or null. Preferred implementation lives in `static/app/api.js`.
+- `window.appendMessage(msg)` — Append a rendered message DOM into the messages container. Implemented by `static/app/messages.js`.
+- `window.roomsApi` — namespace containing `selectRoom`, `renderRooms`, `renderContacts`, `renderMembers`, and data loaders. Implemented in `static/app/rooms.js`.
+- `window.initEmojiPicker()` — Initialize emoji picker UI. Implemented in `static/app/emoji.js`.
+- `window.initFileAttachments()` — Initialize file attachment UI. Implemented in `static/app/attachments.js`.
+- `window.handleComposerSubmit(ev)` — Composer submit handler used by `app.js`. Implemented in `static/app/composer.js`.
+- `window.initMessagesUi()` — Messages autoscroll and infinite-scroll wiring. Implemented in `static/app/messages-ui.js`.
+- `window.initAuthUi(root)` — Initialize auth-related UI (logout). Implemented in `static/app/lib/auth.js`.
+- `window.initComposerUi(root)` — Composer-related small UI helpers (reply-cancel, attachment clear). Implemented in `static/app/ui/composer-ui.js`.
+- `window.initSessionsUi(root)` — Session/header UI wiring (user dropdown, admin button, unread handlers). Implemented in `static/app/sessions.js`.
+- `window.t(key[, lang])`, `window.setLocale(lang)`, `window.addStrings(lang, obj)` — Minimal i18n helpers. Implemented in `static/app/i18n.js`.
+
+DOM hooks the modules expect on `window` or in the page:
+- `window.messagesEl` — element with id `messages` (set by `app.js` during boot)
+- `window.earliestTimestamp`, `window.latestTimestamp` — timestamps for infinite scroll tracking
+
+Notes:
+- Keep these APIs intentionally small. Add new namespaced APIs (`window.fooApi`) instead of polluting the global scope further.
+- When adding or changing APIs, update both this document and `static/app/window-api.js` (JSDoc typedefs) for editor hints.
 # Frontend window API contract
 
 This short document lists the informal contract of global APIs exposed on `window` by the chat app front-end. The project intentionally exposes small functions on `window` (for no-build loading order and incremental extraction). Use this file as the canonical reference when extracting or changing behavior.
@@ -39,11 +65,18 @@ APIs (summary)
 - handleComposerSubmit(event: Event) => Promise<void>
   - Purpose: Composer submit handler that performs atomic message sends (and optional file upload). Implemented in `static/app/composer.js` and delegated to from `app.js`.
 
+- initEmojiPicker() => void
+  - Purpose: Initialize the inline emoji picker UI. Implemented in `static/app/emoji.js` and invoked from `app.js`.
+
+- initFileAttachments() => void
+  - Purpose: Initialize file attachment selection UI (preview/remove). Implemented in `static/app/attachments.js` and invoked from `app.js`.
+
 - startHeartbeat(), startPresencePolling(), closePresence()
   - Purpose: Presence and heartbeat helpers. Implemented in `static/app/presence.js`.
 
 - loadSessions() / openAdminPanel()
   - Purpose: Session and admin UI helpers. Implemented in `static/app/sessions.js` or provided by the main app.
+  - Note: A fallback `openAdminPanel` implementation now exists in `static/app/admin.js` and is exposed on `window.openAdminPanel` so pages can call it regardless of header/main script ordering.
 
 Window state (shared globals)
 - window.messagesEl: HTMLElement | null — the message list container (`#messages`).

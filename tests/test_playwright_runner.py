@@ -19,7 +19,7 @@ def _run_playwright(spec_path):
 @pytest.mark.usefixtures('server')
 def test_playwright_header_smoke():
     # Run the Playwright spec using the running test server (TEST_MODE=1 set by server fixture)
-    spec = 'tests/playwright/header_smoke.spec.js'
+    spec = 'tests/e2e/playwright/header_smoke.spec.js'
     rc = _run_playwright(spec)
     # ensure artifacts are copied to a stable location for CI collection
     try:

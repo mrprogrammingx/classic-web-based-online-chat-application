@@ -1,4 +1,30 @@
 /**
+ * @typedef {Object} RoomsApi
+ * @property {(roomOrId:any)=>void} selectRoom
+ * @property {()=>void} renderRooms
+ * @property {()=>void} renderContacts
+ * @property {(members:Array)=>void} renderMembers
+ */
+
+/**
+ * @typedef {Object} WindowApi
+ * @property {(url:string, opts?:any)=>Promise<any>} fetchJSON
+ * @property {(msg:any)=>void} appendMessage
+ * @property {RoomsApi} roomsApi
+ * @property {()=>void} initEmojiPicker
+ * @property {()=>void} initFileAttachments
+ * @property {(ev:Event)=>void} handleComposerSubmit
+ * @property {(root?:Document|Element)=>void} initAuthUi
+ * @property {(root?:Document|Element)=>void} initSessionsUi
+ * @property {(root?:Document|Element)=>void} initComposerUi
+ * @property {(key:string, lang?:string)=>string} t
+ * @property {(lang:string)=>void} setLocale
+ * @property {(lang:string, obj:Object)=>void} addStrings
+ */
+
+// This file intentionally doesn't assign to window at runtime. It's a JSDoc-only helper
+// that editors (VS Code) can read for autocompletion when this file is opened.
+/**
  * @fileoverview Lightweight JSDoc typedefs for the global window API used by the chat frontend.
  * This file intentionally has no side-effects and only provides type hints for editors.
  */
