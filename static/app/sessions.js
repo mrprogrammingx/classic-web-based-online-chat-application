@@ -37,18 +37,25 @@
       const panel = document.getElementById('user-panel');
       const sessionsList = document.getElementById('sessions-list');
       const refreshBtn = document.getElementById('btn-refresh-sessions');
-      const inlineLogout = document.getElementById('btn-logout-inline');
-      function closePanel(){ if(panel) panel.style.display='none'; }
-      function openPanel(){ if(panel) panel.style.display='block'; loadSessions(); }
-      if(toggle) toggle.addEventListener('click', ()=>{ if(panel && panel.style.display==='block') closePanel(); else openPanel(); });
-      if(refreshBtn) refreshBtn.addEventListener('click', ()=> loadSessions());
-      if(inlineLogout) inlineLogout.addEventListener('click', async ()=>{ try{ await fetch('/logout', {method:'POST', credentials:'include'}); }catch(e){} location.href='/static/auth/login.html'; });
+  function closePanel(){ if(panel) panel.style.display='none'; }
+  function openPanel(){ if(panel) panel.style.display='block'; loadSessions(); }
+  if(toggle) toggle.addEventListener('click', ()=>{ if(panel && panel.style.display==='block') closePanel(); else openPanel(); });
+  if(refreshBtn) refreshBtn.addEventListener('click', ()=> loadSessions());
       // show admin button (header may add admin-open elsewhere)
       try{ const adminBtn = document.getElementById('admin-open'); if(adminBtn) adminBtn.style.display = user.is_admin ? 'inline-flex' : 'none'; }catch(e){}
     }catch(e){ console.warn('renderUserInfo failed', e); }
   }
 
+  // initialize header/session-related UI wiring (header may be injected later)
+  function initSessionsUi(root){
+    root = root || document;
+    // reattach unread handlers when header fragment loads
+    root.addEventListener && root.addEventListener('shared-header-loaded', function(){ try{ if(typeof attachUnreadHandlers === 'function') attachUnreadHandlers(); }catch(e){} });
+    // admin open button wiring
+    try{ var adminBtn = document.getElementById('admin-open'); if(adminBtn){ adminBtn.addEventListener && adminBtn.addEventListener('click', async ()=>{ try{ if(window && typeof window.openAdminPanel === 'function') return window.openAdminPanel(); }catch(e){} }); } }catch(e){}
+  }
+
   function openAdminPanel(){ try{ if(typeof window.openAdminPanel === 'function') return window.openAdminPanel(); /* fallback not implemented here */ }catch(e){} }
 
-  try{ window.loadSessions = loadSessions; window.renderUserInfo = renderUserInfo; window.openAdminPanel = openAdminPanel; }catch(e){}
+  try{ window.loadSessions = loadSessions; window.renderUserInfo = renderUserInfo; window.openAdminPanel = openAdminPanel; window.initSessionsUi = initSessionsUi; }catch(e){}
 })();
