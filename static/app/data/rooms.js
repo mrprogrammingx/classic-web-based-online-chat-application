@@ -2,7 +2,7 @@
 (function(){
   async function loadRooms(){
     const data = await window.fetchJSON('/rooms');
-    if(data && data.rooms){ window.rooms = data.rooms; try{ if(typeof window.renderRooms === 'function') window.renderRooms(); }catch(e){} if(window.rooms && window.rooms.length && !(window.__TEST_SKIP_AUTOSELECT)) window.selectRoom(window.rooms[0]); }
+    if(data && data.rooms){ window.rooms = data.rooms; try{ if(typeof window.renderRooms === 'function') window.renderRooms(); }catch(e){} if(window.rooms && window.rooms.length && !(window.__TEST_SKIP_AUTOSELECT)) selectRoom(window.rooms[0]); }
   }
 
   async function loadContacts(){
@@ -47,6 +47,30 @@
     }
   }
 
+  // load unread summary used by tests to refresh badges
+  async function loadUnreadSummary(){
+    try{
+      const data = await window.fetchJSON('/notifications/unread-summary');
+      if(!data) return;
+      // apply counts to DOM rooms list
+      try{
+        const roomsListEl = document.getElementById('rooms-list');
+        if(roomsListEl && data.rooms){
+          data.rooms.forEach(rm => {
+            try{
+              const li = Array.from(roomsListEl.querySelectorAll('li')).find(l => String(l.dataset.id) === String(rm.room_id));
+              if(li){
+                let badge = li.querySelector('.unread-badge');
+                if(!badge){ badge = document.createElement('span'); badge.className = 'unread-badge'; li.appendChild(badge); }
+                if(Number(rm.unread_count) > 0){ badge.textContent = String(Number(rm.unread_count)); badge.classList.remove('hidden'); } else { badge.classList.add('hidden'); }
+              }
+            }catch(e){}
+          });
+        }
+      }catch(e){}
+    }catch(e){}
+  }
+
   async function loadDialogMessages(otherId, opts){
     opts = opts || {};
     const before = opts.before ? `?before=${encodeURIComponent(opts.before)}` : '';
@@ -64,33 +88,36 @@
       data.messages.forEach(m=>{ const el = window.appendMessage(m); if(window.messagesEl) window.messagesEl.appendChild(el); window.earliestTimestamp = window.earliestTimestamp ? Math.min(window.earliestTimestamp, m.created_at) : m.created_at; window.latestTimestamp = m.created_at || window.latestTimestamp; });
       if(window.messagesEl) { window.messagesEl.scrollTop = window.messagesEl.scrollHeight; window.autoscroll = true; }
     }
-
-    // canonical selectRoom lives here so room-related loading and DOM updates are colocated
-    function selectRoom(roomOrId){
-      try{
-        let room = roomOrId;
-        if(!room) return;
-        if(typeof roomOrId === 'number' || typeof roomOrId === 'string'){
-          room = (window.rooms||[]).find(r => String(r.id) === String(roomOrId)) || { id: roomOrId };
-        }
-        window.currentRoom = room;
-        window.isDialog = !!room.is_dialog || false;
-        // update title if present in DOM
-        try{ const roomTitleEl = document.getElementById('room-title'); if(roomTitleEl) roomTitleEl.textContent = room.name || room.other_name || (window.isDialog ? 'Dialog' : 'Room'); }catch(e){}
-        // clear messages and load
-        try{ if(window.messagesEl) window.messagesEl.innerHTML = ''; }catch(e){}
-        try{
-          if(window.isDialog) loadDialogMessages(room.id);
-          else loadRoomMessages(room.id);
-        }catch(e){}
-        // mark active room item
-        try{
-          const roomsListEl = document.getElementById('rooms-list');
-          if(roomsListEl){ Array.from(roomsListEl.querySelectorAll('li')).forEach(li=>{ li.classList.toggle('active', li.dataset && String(li.dataset.id) === String(room.id)); }); }
-        }catch(e){}
-      }catch(e){}
-    }
   }
 
-  try{ window.loadRooms = loadRooms; window.loadContacts = loadContacts; window.loadRoomMembers = loadRoomMembers; window.loadRoomMessages = loadRoomMessages; window.loadDialogMessages = loadDialogMessages; window.roomsApi = { loadRooms, loadContacts, loadRoomMembers, loadRoomMessages, loadDialogMessages }; }catch(e){}
+  // canonical selectRoom lives here so room-related loading and DOM updates are colocated
+  function selectRoom(roomOrId){
+    try{
+      let room = roomOrId;
+      if(!room) return;
+      if(typeof roomOrId === 'number' || typeof roomOrId === 'string'){
+        room = (window.rooms||[]).find(r => String(r.id) === String(roomOrId)) || { id: roomOrId };
+      }
+      window.currentRoom = room;
+      window.isDialog = !!room.is_dialog || false;
+      // update title if present in DOM
+      try{ const roomTitleEl = document.getElementById('room-title'); if(roomTitleEl) roomTitleEl.textContent = room.name || room.other_name || (window.isDialog ? 'Dialog' : 'Room'); }catch(e){}
+      // clear messages and load
+      try{ if(window.messagesEl) window.messagesEl.innerHTML = ''; }catch(e){}
+      try{
+        if(window.isDialog) loadDialogMessages(room.id);
+        else loadRoomMessages(room.id);
+      }catch(e){}
+      // mark active room item
+      try{
+        const roomsListEl = document.getElementById('rooms-list');
+        if(roomsListEl){ Array.from(roomsListEl.querySelectorAll('li')).forEach(li=>{ li.classList.toggle('active', li.dataset && String(li.dataset.id) === String(room.id)); }); }
+        // when room is selected, clear its unread badge
+        try{ const li = document.querySelector(`#rooms-list li[data-id="${room.id}"]`); if(li){ const b = li.querySelector('.unread-badge'); if(b) b.classList.add('hidden'); } }catch(e){}
+      }catch(e){}
+    }catch(e){}
+  }
+
+  try{ window.loadRooms = loadRooms; window.loadContacts = loadContacts; window.loadRoomMembers = loadRoomMembers; window.loadRoomMessages = loadRoomMessages; window.loadDialogMessages = loadDialogMessages; window.loadUnreadSummary = loadUnreadSummary; window.selectRoom = selectRoom; window.roomsApi = { loadRooms, loadContacts, loadRoomMembers, loadRoomMessages, loadDialogMessages, loadUnreadSummary, selectRoom }; }catch(e){}
+
 })();
