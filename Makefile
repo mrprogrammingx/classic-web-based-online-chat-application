@@ -1,3 +1,21 @@
+PYTEST=.venv/bin/pytest
+PLAYWRIGHT=npx playwright
+
+.PHONY: unit integration e2e test
+
+unit:
+	@echo "Running unit tests..."
+	$(PYTEST) tests/unit
+
+integration:
+	@echo "Running integration tests (requires server at http://127.0.0.1:8000)..."
+	$(PYTEST) tests/integration
+
+e2e:
+	@echo "Running Playwright e2e tests..."
+	$(PLAYWRIGHT) test tests/e2e/playwright --reporter=list,html
+
+test: unit integration
 # Makefile for common developer tasks
 
 VENV=.venv

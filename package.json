@@ -2,7 +2,11 @@
   "name": "chat-app-tests",
   "version": "1.0.0",
   "scripts": {
-    "test:playwright": "playwright test"
+    "test:playwright": "playwright test",
+    "test:e2e": "npx playwright test tests/e2e/playwright --reporter=list,html",
+    "test:unit": "pytest -q tests/unit",
+    "test:integration": "pytest -q tests/integration",
+    "test": "npm run test:unit && npm run test:integration"
   },
   "devDependencies": {
     "@playwright/test": "^1.40.0"
