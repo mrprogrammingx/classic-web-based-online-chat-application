@@ -39,22 +39,13 @@ document.addEventListener('DOMContentLoaded', ()=>{
   try{ if(typeof attachUnreadHandlers === 'function') attachUnreadHandlers(); }catch(e){}
 
   // If the header is injected later, re-attach handlers via shared helper
-  window.addEventListener('shared-header-loaded', ()=>{ try{ if(typeof attachUnreadHandlers === 'function') attachUnreadHandlers(); }catch(e){} try{ const adminBtn = document.getElementById('admin-open'); if(adminBtn){ adminBtn.addEventListener && adminBtn.addEventListener('click', async ()=>{ /* admin binding exists in main.js as well */ }); } }catch(e){} });
+  window.addEventListener('shared-header-loaded', ()=>{ try{ if(typeof attachUnreadHandlers === 'function') attachUnreadHandlers(); }catch(e){} try{ const adminBtn = document.getElementById('admin-open'); if(adminBtn){ adminBtn.addEventListener && adminBtn.addEventListener('click', async ()=>{ try{ if(window && typeof window.openAdminPanel === 'function') return window.openAdminPanel(); }catch(e){} }); } }catch(e){} });
 
 
-  // Admin UI: open admin panel when admin-open button clicked
+  // Admin UI: open admin panel when admin-open button clicked (delegates to admin.js)
   const adminOpenBtn = document.getElementById('admin-open');
   if(adminOpenBtn){
-    adminOpenBtn.addEventListener('click', async ()=>{
-      if(typeof window.openAdminPanel === 'function') return window.openAdminPanel();
-      // fallback: simple list
-      try{
-        const panel = await fetchJSON('/admin/users'); const users = (panel && panel.users) || [];
-        const root = document.getElementById('modal-root') || (function(){ const r=document.createElement('div'); r.id='modal-root'; document.body.appendChild(r); return r; })();
-        root.innerHTML = '';
-        const p = document.createElement('div'); p.className = 'admin-panel'; const ul = document.createElement('ul'); ul.style.listStyle='none'; ul.style.padding='0'; users.forEach(u=>{ const li = document.createElement('li'); li.textContent = `${u.id} - ${u.email}`; ul.appendChild(li); }); p.appendChild(ul); root.appendChild(p);
-      }catch(e){ console.warn('fallback admin open failed', e); }
-    });
+    adminOpenBtn.addEventListener && adminOpenBtn.addEventListener('click', async ()=>{ try{ if(window && typeof window.openAdminPanel === 'function') return window.openAdminPanel(); }catch(e){} });
   }
 
   // initialize messages UI (autoscroll + infinite-scroll) - implemented in static/app/messages-ui.js
@@ -177,7 +168,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
   // expose UI hooks for extracted modules (rooms.js expects these on window)
   try{ window.selectRoom = selectRoom; window.openDialog = openDialog; window.renderRooms = renderRooms; window.renderContacts = renderContacts; window.renderMembers = renderMembers; }catch(e){}
-  bootstrap();
 
   roomsToggle.addEventListener('click', ()=>{
     roomsSection.classList.toggle('compacted');
