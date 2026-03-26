@@ -8,7 +8,7 @@ const page = location.pathname;
 // the modal/toast containers still get the async modal/toast UX.
 function ensureUiRoots(){
   try{
-    if(window && typeof window.ensureUiRoots === 'function'){
+    if(window && typeof window.ensureUiRoots === 'function' && window.ensureUiRoots !== ensureUiRoots){
       return window.ensureUiRoots();
     }
   }catch(e){}
