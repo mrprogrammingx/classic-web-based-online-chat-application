@@ -1,0 +1,27 @@
+const { chromium, request } = require('playwright');
+(async()=>{
+  const BASE = process.env.PLAYWRIGHT_BASE || 'http://127.0.0.1:8000';
+  const req = await request.newContext();
+  const suffix = Math.random().toString(36).slice(2,7);
+  const email = `net_${suffix}@example.com`;
+  const username = `net_${suffix}`;
+  const resp = await req.post(`${BASE}/register`, { data: { email, username, password: 'pw' } });
+  const body = await resp.json();
+  const token = body.token;
+  console.log('registered', username);
+  const browser = await chromium.launch();
+  const context = await browser.newContext();
+  await context.addCookies([{ name: 'token', value: token, url: BASE, httpOnly: true }]);
+  const page = await context.newPage();
+  page.on('console', msg => console.log('PAGE LOG:', msg.type(), msg.text()));
+  page.on('pageerror', err => console.log('PAGE ERROR:', err.stack || err.toString()));
+  page.on('request', req => { if(req.url().includes('/header/header.html') || req.url().includes('/static/header/header.html') || req.url().includes('/static/site-config.json')) console.log('REQ>', req.method(), req.url()); });
+  page.on('response', res => { if(res.url().includes('/header/header.html') || res.url().includes('/static/header/header.html') || res.url().includes('/static/site-config.json')) console.log('RESP>', res.status(), res.url()); });
+  await page.goto(BASE + '/');
+  await page.waitForLoadState('networkidle');
+  await page.waitForTimeout(1000);
+  const userInfo = await page.evaluate(()=> document.getElementById('user-info') ? document.getElementById('user-info').innerHTML : null);
+  console.log('user-info:', userInfo);
+  await browser.close();
+  process.exit(0);
+})();
