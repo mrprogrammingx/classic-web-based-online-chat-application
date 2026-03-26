@@ -1,7 +1,9 @@
 // User/session rendering and admin panel helpers (extracted from app.js)
 (function(){
+  function escapeHtml(s){ return String(s||'').replace(/[&<>'"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":"&#39;", '"':'&quot;' })[c]); }
   async function loadSessions(){
     try{
+      console.debug && console.debug('sessions: loadSessions called');
       const sessionsList = document.getElementById('sessions-list');
       if(!sessionsList) return;
       sessionsList.innerHTML = '<li class="meta">Loading…</li>';
@@ -29,14 +31,27 @@
 
   function renderUserInfo(user){
     try{
+      console.debug && console.debug('sessions: renderUserInfo called', user && user.username);
       const ui = document.getElementById('user-info');
       if(!ui) return;
       const display = (user.username || user.email || ('user'+user.id));
-      ui.innerHTML = `\n+            <div class="user-dropdown">\n+              <div class="user-toggle" id="user-toggle" tabindex="0">\n+                <span class="avatar">${String((user.username||user.email||'U').charAt(0)).toUpperCase()}</span>\n+                <strong>${escapeHtml(display)}</strong>\n+                ${user.is_admin? '<span class="badge">admin</span>':''}\n+              </div>\n+              <div class="dropdown-panel" id="user-panel" style="display:none">\n+                <h4>Sessions</h4>\n+                <ul class="sessions-list" id="sessions-list"><li class="meta">Loading…</li></ul>\n+                <div style="margin-top:8px;display:flex;gap:8px;justify-content:space-between">\n+                  <button id="btn-logout-inline" type="button">Logout</button>\n+                  <button id="btn-refresh-sessions" type="button">Refresh</button>\n+                </div>\n+              </div>\n+            </div>\n+          `;
-      const toggle = document.getElementById('user-toggle');
-      const panel = document.getElementById('user-panel');
-      const sessionsList = document.getElementById('sessions-list');
-      const refreshBtn = document.getElementById('btn-refresh-sessions');
+      // build DOM nodes safely instead of innerHTML templating
+      ui.innerHTML = '';
+      const dropdown = document.createElement('div'); dropdown.className = 'user-dropdown';
+      const toggle = document.createElement('div'); toggle.className = 'user-toggle'; toggle.id = 'user-toggle'; toggle.tabIndex = 0;
+      const avatar = document.createElement('span'); avatar.className = 'avatar'; avatar.textContent = String((user.username||user.email||'U').charAt(0)).toUpperCase();
+      const strong = document.createElement('strong'); strong.textContent = display;
+      toggle.appendChild(avatar); toggle.appendChild(strong);
+      if(user.is_admin){ const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = 'admin'; toggle.appendChild(badge); }
+      const panel = document.createElement('div'); panel.className = 'dropdown-panel'; panel.id = 'user-panel'; panel.style.display = 'none';
+      const h4 = document.createElement('h4'); h4.textContent = 'Sessions';
+      const sessionsList = document.createElement('ul'); sessionsList.className = 'sessions-list'; sessionsList.id = 'sessions-list'; sessionsList.innerHTML = '<li class="meta">Loading…</li>';
+      const footer = document.createElement('div'); footer.style.marginTop = '8px'; footer.style.display = 'flex'; footer.style.gap = '8px'; footer.style.justifyContent = 'space-between';
+      const logoutBtn = document.createElement('button'); logoutBtn.id = 'btn-logout-inline'; logoutBtn.type = 'button'; logoutBtn.textContent = 'Logout';
+      const refreshBtn = document.createElement('button'); refreshBtn.id = 'btn-refresh-sessions'; refreshBtn.type = 'button'; refreshBtn.textContent = 'Refresh';
+      footer.appendChild(logoutBtn); footer.appendChild(refreshBtn);
+      panel.appendChild(h4); panel.appendChild(sessionsList); panel.appendChild(footer);
+      dropdown.appendChild(toggle); dropdown.appendChild(panel); ui.appendChild(dropdown);
   function closePanel(){ if(panel) panel.style.display='none'; }
   function openPanel(){ if(panel) panel.style.display='block'; loadSessions(); }
   if(toggle) toggle.addEventListener('click', ()=>{ if(panel && panel.style.display==='block') closePanel(); else openPanel(); });
@@ -58,4 +73,24 @@
   function openAdminPanel(){ try{ if(typeof window.openAdminPanel === 'function') return window.openAdminPanel(); /* fallback not implemented here */ }catch(e){} }
 
   try{ window.loadSessions = loadSessions; window.renderUserInfo = renderUserInfo; window.openAdminPanel = openAdminPanel; window.initSessionsUi = initSessionsUi; }catch(e){}
+  // If the header was already populated by a minimal fallback (main.js/bootstrap),
+  // try to upgrade it now that the sessions lib is available by fetching /me
+  // and calling the richer renderUserInfo() implementation.
+    async function tryUpgradeHeader(){
+      try{
+        console.debug && console.debug('sessions: tryUpgradeHeader running');
+        if(!document.getElementById('user-info')) return;
+        // best-effort fetch current user (cookie auth)
+        const r = await fetch('/me', { credentials: 'include' }).catch(()=>null);
+        console.debug && console.debug('sessions: /me fetch returned', r && r.status);
+        if(!r || r.status !== 200) return;
+        const body = await r.json().catch(()=>null);
+        console.debug && console.debug('sessions: /me body', body);
+        if(body && body.user){ try{ renderUserInfo(body.user); }catch(e){} }
+      }catch(e){}
+    }
+
+    // try immediately, and also after header fragment is injected
+    tryUpgradeHeader();
+    try{ window.addEventListener && window.addEventListener('shared-header-loaded', tryUpgradeHeader); }catch(e){}
 })();
