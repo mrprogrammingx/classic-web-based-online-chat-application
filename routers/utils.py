@@ -5,10 +5,12 @@ import aiosqlite
 from db import DB
 from fastapi import HTTPException, Request
 import os
+from typing import List
 
 pwd = CryptContext(schemes=['pbkdf2_sha256'], deprecated='auto')
 JWT_SECRET = 'change_this_secret'
 JWT_ALGO = 'HS256'
+
 def presence_online_seconds():
     try:
         return int(os.getenv('PRESENCE_ONLINE_SECONDS', '60'))
@@ -23,9 +25,7 @@ def verify_pw(pw: str, h: str) -> bool:
 
 def create_token(payload: dict, exp_seconds: int = 3600*24*7):
     data = payload.copy()
-    # ensure exp is an integer timestamp (PyJWT expects a numeric date)
     data['exp'] = int(time.time() + exp_seconds)
-    # optional jti for session identification
     if 'jti' in payload:
         data['jti'] = payload['jti']
     return jwt.encode(data, JWT_SECRET, algorithm=JWT_ALGO)
@@ -75,7 +75,6 @@ async def require_auth(request: Request):
         data = verify_token(token_val)
     except Exception:
         raise HTTPException(status_code=401, detail='invalid token')
-    # ensure the session (jti) still exists
     jti = data.get('jti')
     if not jti or not await session_exists(jti):
         raise HTTPException(status_code=401, detail='invalid or expired session')
@@ -91,7 +90,7 @@ async def list_sessions_for_user(user_id: int):
 
 async def remove_session_by_jti(jti: str):
     await remove_session(jti)
-    
+
 
 async def touch_tab(tab_id: str, jti: str, user_id: int, ip: str = None, user_agent: str = None):
     now = int(time.time())
@@ -111,13 +110,6 @@ async def remove_tab(tab_id: str):
 
 
 async def get_presence_status(user_id: int):
-    """Return presence status for a given user_id: 'online', 'AFK', or 'offline'.
-
-    Rules implemented:
-    - If at least one tab has last_active within 60s -> 'online'
-    - If all tabs exist but all last_active older than 60s -> 'AFK'
-    - If no tabs -> 'offline'
-    """
     cutoff = int(time.time()) - presence_online_seconds()
     async with aiosqlite.connect(DB) as db:
         cur = await db.execute('SELECT COUNT(*) FROM tab_presence WHERE user_id = ?', (user_id,))
@@ -132,15 +124,10 @@ async def get_presence_status(user_id: int):
 
 
 async def get_presence_statuses(user_ids: list):
-    """Return a dict mapping user_id -> status computed in a single query for efficiency.
-
-    Status rules: total==0 -> offline, active>0 -> online, else AFK
-    """
     if not user_ids:
         return {}
     cutoff = int(time.time()) - presence_online_seconds()
     placeholders = ','.join(['?'] * len(user_ids))
-    # use MAX(last_active) to determine if any tab is recent, and COUNT(*) for existence
     sql = f"SELECT user_id, COUNT(*) as total, MAX(last_active) as last_active_max FROM tab_presence WHERE user_id IN ({placeholders}) GROUP BY user_id"
     params = list(user_ids)
     out = {}
@@ -157,7 +144,6 @@ async def get_presence_statuses(user_ids: list):
                 out[str(uid)] = 'online'
             else:
                 out[str(uid)] = 'AFK'
-        # any ids not present in rows are offline
         for uid in user_ids:
             if uid not in found:
                 out[str(uid)] = 'offline'
