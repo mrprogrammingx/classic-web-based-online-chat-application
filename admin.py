@@ -4,6 +4,7 @@ import aiosqlite
 import time
 from utils import require_auth
 from db import DB
+from services import admin_service
 
 router = APIRouter()
 
@@ -71,40 +72,15 @@ async def list_users(request: Request, user=Depends(require_admin)):
     where_clause = ('WHERE ' + ' AND '.join(where)) if where else ''
     offset = (page - 1) * per_page
 
-    q = qs.get('q')
-
-    q = qs.get('q')
-    async with aiosqlite.connect(DB) as db:
-        # total count for the filtered query
-        count_q = f"SELECT COUNT(*) FROM users {where_clause}"
-        cur = await db.execute(count_q, tuple(params))
-        total_row = await cur.fetchone()
-        total = total_row[0] if total_row else 0
-
-    # preserve descending order (newest first) for tests and admin UX
-    async with aiosqlite.connect(DB) as db:
-        qstmt = f"SELECT id, email, username, created_at, is_admin FROM users {where_clause} ORDER BY id DESC LIMIT ? OFFSET ?"
-        cur = await db.execute(qstmt, tuple(params) + (per_page, offset))
-        rows = await cur.fetchall()
-        users = [{'id': r[0], 'email': r[1], 'username': r[2], 'created_at': r[3], 'is_admin': bool(r[4])} for r in rows]
-        # also include list of currently banned user ids so front-end doesn't need an extra request
-        cur = await db.execute('SELECT DISTINCT banned_id FROM bans')
-        banned_rows = await cur.fetchall()
-        banned_ids = [r[0] for r in banned_rows]
+    # Delegate DB-heavy work to admin_service
+    users, total, banned_ids = await admin_service.list_users(flt if flt != 'all' else None, q, page=page, per_page=per_page)
     return {'users': users, 'total': total, 'page': page, 'per_page': per_page, 'banned_ids': banned_ids}
 
 
 @router.get('/admin/users/counts')
 async def admin_user_counts(user=Depends(require_admin)):
     # return quick counts for filter buttons
-    async with aiosqlite.connect(DB) as db:
-        cur = await db.execute('SELECT COUNT(*) FROM users')
-        total = (await cur.fetchone())[0]
-        cur = await db.execute('SELECT COUNT(*) FROM users WHERE is_admin = 1')
-        admins = (await cur.fetchone())[0]
-        cur = await db.execute('SELECT COUNT(DISTINCT banned_id) FROM bans')
-        banned = (await cur.fetchone())[0]
-        return {'total': total, 'admins': admins, 'banned': banned}
+    return await admin_service.admin_user_counts()
 
 
 @router.post('/admin/users/delete')
@@ -115,31 +91,7 @@ async def delete_user(request: Request, user=Depends(require_admin)):
         raise HTTPException(status_code=400, detail='id required')
     # When removing a user, also remove or clean up related records that
     # aren't guaranteed to cascade (SQLite foreign keys may be disabled).
-    async with aiosqlite.connect(DB) as db:
-        # remove global bans where user is banner or banned
-        await db.execute('DELETE FROM bans WHERE banner_id = ? OR banned_id = ?', (uid, uid))
-        # remove room-level bans, memberships, and room admin entries
-        await db.execute('DELETE FROM room_bans WHERE banned_id = ?', (uid,))
-        await db.execute('DELETE FROM memberships WHERE user_id = ?', (uid,))
-        await db.execute('DELETE FROM room_admins WHERE user_id = ?', (uid,))
-        # remove session/tab presence
-        await db.execute('DELETE FROM tab_presence WHERE user_id = ?', (uid,))
-        await db.execute('DELETE FROM sessions WHERE user_id = ?', (uid,))
-        # remove friend relations and requests
-        await db.execute('DELETE FROM friends WHERE user_id = ? OR friend_id = ?', (uid, uid))
-        await db.execute('DELETE FROM friend_requests WHERE from_id = ? OR to_id = ?', (uid, uid))
-        # remove dialog reads / dialog metadata
-        await db.execute('DELETE FROM dialog_reads WHERE user_id = ? OR other_id = ?', (uid, uid))
-        # remove private message files and private messages (both directions)
-        await db.execute('DELETE FROM private_message_files WHERE from_id = ? OR to_id = ?', (uid, uid))
-        await db.execute('DELETE FROM private_messages WHERE from_id = ? OR to_id = ?', (uid, uid))
-        # remove room message files that belong to messages authored by the user (if any)
-        await db.execute('DELETE FROM message_files WHERE message_id IN (SELECT id FROM messages WHERE user_id = ?)', (uid,))
-        # remove room messages authored by the user
-        await db.execute('DELETE FROM messages WHERE user_id = ?', (uid,))
-        # finally, remove the user row itself; rooms owned by the user will keep owner_id NULL
-        await db.execute('DELETE FROM users WHERE id = ?', (uid,))
-        await db.commit()
+    await admin_service.delete_user_and_cleanup(uid)
     return {'ok': True}
 
 
@@ -150,9 +102,7 @@ async def promote_user(request: Request, user=Depends(require_admin)):
     uid = body.get('id')
     if not uid:
         raise HTTPException(status_code=400, detail='id required')
-    async with aiosqlite.connect(DB) as db:
-        await db.execute('UPDATE users SET is_admin = 1 WHERE id = ?', (uid,))
-        await db.commit()
+    await admin_service.set_admin(uid, True)
     return {'ok': True}
 
 
