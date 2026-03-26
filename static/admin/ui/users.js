@@ -9,25 +9,38 @@ import { createUserActions } from '../actions.js';
 export async function renderUsers(container) {
   container.innerHTML = loading();
 
-  const data = await fetchUsers();
+  let data = null;
+  try{
+    data = await fetchUsers();
+    console.debug('renderUsers: fetched users', data && data.users && data.users.length);
+  }catch(err){
+    console.error('renderUsers: fetchUsers failed', err);
+  }
+
   if (!data) {
     container.innerHTML = empty('Failed to load users');
     return;
   }
 
   container.innerHTML = '';
-
   container.appendChild(
     createControls(() => renderUsers(container))
   );
 
+  // Backwards-compat wrapper: tests and legacy code expect a `.admin-list` element.
+  const listWrap = document.createElement('div');
+  listWrap.className = 'admin-list';
+
   const actions = createUserActions({ getBannedIds: (u) => (data.banned_ids || []).includes(u.id), refresh: async () => renderUsers(container) });
   const rowStart = (state.users.page - 1) * state.users.perPage;
-  container.appendChild(createTable(data.users, { ...actions, rowStart }));
+  const table = createTable(data.users, { ...actions, rowStart });
+  listWrap.appendChild(table);
 
-  container.appendChild(
+  listWrap.appendChild(
     createPager(data.total, () => renderUsers(container))
   );
+
+  container.appendChild(listWrap);
 }
 
 async function fetchUsers() {
@@ -37,9 +50,16 @@ async function fetchUsers() {
     q: state.users.query || ''
   });
 
-  const res = await apiGet('/admin/users?' + q);
-
-  if (!res || !res.ok) return null;
-
-  return res.data;
+  try{
+    const res = await apiGet('/admin/users?' + q);
+    if (!res || !res.ok) {
+      console.warn('fetchUsers: apiGet failed', res && res.status);
+      return null;
+    }
+    console.debug('fetchUsers: apiGet ok, data keys=', Object.keys(res.data || {}));
+    return res.data;
+  }catch(e){
+    console.error('fetchUsers: exception', e);
+    return null;
+  }
 }
