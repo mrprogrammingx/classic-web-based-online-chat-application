@@ -99,56 +99,11 @@ document.addEventListener('DOMContentLoaded', ()=>{
     }
   });
 
-  // inline emoji picker
-  const emojiBtn = document.getElementById('emoji-btn');
-  const emojiPicker = document.getElementById('emoji-picker');
-  const emojis = ['😀','😁','😂','🤣','😊','😍','😎','😅','🙂','😉','🙃','😘','🤔','😴','😡','👍','👎','🙏','🎉','🔥','💯','🚀','🌟','🍕','☕️','📎','📷','🖼️','🎵','✅','❌','➕','➖'];
-  function buildEmojiPicker(){
-    if(!emojiPicker) return;
-    emojiPicker.innerHTML = '';
-    const grid = document.createElement('div'); grid.className='emoji-grid';
-    emojis.forEach(e=>{
-      const btn = document.createElement('button'); btn.type='button'; btn.textContent = e;
-      btn.addEventListener('click', ()=>{
-        const pos = input.selectionStart || input.value.length;
-        input.value = input.value.slice(0,pos) + e + input.value.slice(pos);
-        input.focus();
-        emojiPicker.style.display = 'none';
-      });
-      grid.appendChild(btn);
-    });
-    emojiPicker.appendChild(grid);
-  }
-  buildEmojiPicker();
-  if(emojiBtn){
-    emojiBtn.addEventListener('click', (ev)=>{
-      ev.stopPropagation();
-      if(!emojiPicker) return;
-      emojiPicker.style.display = emojiPicker.style.display === 'block' ? 'none' : 'block';
-    });
-  }
-  // hide picker when clicking elsewhere
-  document.addEventListener('click', (ev)=>{ if(emojiPicker) emojiPicker.style.display='none'; });
+  // initialize emoji picker (extracted to static/app/emoji.js)
+  try{ if(window && typeof window.initEmojiPicker === 'function') window.initEmojiPicker(); }catch(e){}
 
-  // file attachment handling with upload guard and spinner
-  const fileInput = document.getElementById('file-input');
-  let uploading = false;
-  const uploadingIndicator = document.getElementById('uploading-indicator');
-  // file selection preview: do not auto-upload; user will send with composer submit which uses atomic endpoint
-  if(fileInput){
-    const selectedWrap = document.createElement('div'); selectedWrap.className='selected-file';
-    fileInput.parentNode.insertBefore(selectedWrap, fileInput.nextSibling);
-    fileInput.addEventListener('change', ()=>{
-      selectedWrap.innerHTML = '';
-      if(!fileInput.files || fileInput.files.length === 0) return;
-      const file = fileInput.files[0];
-      const info = document.createElement('div'); info.textContent = `Selected: ${file.name} `;
-      const remove = document.createElement('button'); remove.type='button'; remove.textContent='Remove';
-      remove.addEventListener('click', ()=>{ fileInput.value=''; selectedWrap.innerHTML=''; });
-      info.appendChild(remove);
-      selectedWrap.appendChild(info);
-    });
-  }
+  // initialize file attachment UI (extracted to static/app/attachments.js)
+  try{ if(window && typeof window.initFileAttachments === 'function') window.initFileAttachments(); }catch(e){}
 
   // reply cancel
   const replyCancel = document.getElementById('reply-cancel');
