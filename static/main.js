@@ -69,8 +69,9 @@ function t(key, lang='en'){ return (_STRINGS[lang] && _STRINGS[lang][key]) || _S
 // Polished modal alert for pages that only load main.js (login/register).
 // Returns a Promise resolved when user dismisses the dialog.
 function showAlert(body, title){
-  try{ if(window && typeof window.showModal === 'function'){ return window.showModal({ title: title || '', body: body || '', confirmText: t('ok') }); } }catch(e){}
+  try{ if(window && typeof window.showModal === 'function'){ console.log('showAlert delegating to window.showModal', title); return window.showModal({ title: title || '', body: body || '', confirmText: t('ok') }); } }catch(e){}
   return new Promise((resolve)=>{
+    console.log('showAlert building fallback modal', title, body && (typeof body === 'string' ? body.slice(0,200) : 'non-string'));
     let root = document.getElementById('modal-root');
     if(!root){ try{ root = document.createElement('div'); root.id = 'modal-root'; document.body.appendChild(root); }catch(e){} }
     if(!root) { alert(body); resolve(); return; }
@@ -305,7 +306,7 @@ async function login(){
     try{ sessionStorage.setItem('boot_user', JSON.stringify(data.user)); sessionStorage.setItem('boot_token', data.token || ''); const pj = data.token ? JSON.parse(atob(data.token.split('.')[1])) : {}; sessionStorage.setItem('boot_jti', pj.jti || ''); }catch(e){}
     location.href = siteHref('homeHref', '/static/home.html');
   } else {
-    try{ await showAlert(JSON.stringify(data), 'Login failed'); }catch(e){}
+    try{ console.log('login failed, calling showAlert with', data); await showAlert(JSON.stringify(data), 'Login failed'); }catch(e){}
   }
 }
 
