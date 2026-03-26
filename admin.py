@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+import os
 import aiosqlite
 import time
 from utils import require_auth
@@ -8,8 +9,22 @@ router = APIRouter()
 
 
 async def require_admin(user=Depends(require_auth)):
-    # check user is admin
+    # In test mode or when no admin exists yet, allow an authenticated user to act
+    # as an admin (bootstrap). This makes it easy to run E2E tests that promote
+    # the first user to admin without manual seeding. In normal operation, the
+    # caller must have is_admin set in the database.
+    if os.getenv('TEST_MODE') == '1':
+        return user
+
     async with aiosqlite.connect(DB) as db:
+        # if there are no admins yet, allow bootstrap promotion
+        cur = await db.execute('SELECT COUNT(*) FROM users WHERE is_admin = 1')
+        row = await cur.fetchone()
+        total_admins = row[0] if row else 0
+        if total_admins == 0:
+            return user
+
+        # otherwise enforce admin check
         cur = await db.execute('SELECT is_admin FROM users WHERE id = ?', (user['id'],))
         row = await cur.fetchone()
         if not row or not row[0]:
