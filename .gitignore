@@ -234,3 +234,9 @@ test-results/
 # Ignore local server/test logs
 /tmp/*.log
 *.log
+
+# We keep a top-level `lib/` ignored for packaging artifacts, but we want
+# to track the app helper library under static/app/lib/ (small JS modules).
+# Re-include that specific path.
+!static/app/lib/
+!static/app/lib/**
