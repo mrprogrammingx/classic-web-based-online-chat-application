@@ -45,6 +45,14 @@ function setupAuthPageHelpers(){
         else if(reg && document.getElementById('username')) { reg.click(); }
       }
     });
+    // bind click handlers for login/register buttons when present so pages relying
+    // only on main.js still work without an extra auth script
+    try{
+      const loginBtn = document.getElementById('login');
+      if(loginBtn && !loginBtn.__boundToLogin){ loginBtn.addEventListener('click', ()=>{ try{ login(); }catch(e){} }); loginBtn.__boundToLogin = true; }
+      const regBtn = document.getElementById('register');
+      if(regBtn && !regBtn.__boundToRegister){ regBtn.addEventListener('click', ()=>{ try{ register(); }catch(e){} }); regBtn.__boundToRegister = true; }
+    }catch(e){}
   }catch(e){}
 }
 if(document.readyState === 'loading') window.addEventListener('DOMContentLoaded', setupAuthPageHelpers); else setupAuthPageHelpers();
