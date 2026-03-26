@@ -57,27 +57,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
     });
   }
 
-  // autoscroll logic: only auto-scroll when user is at or near bottom
-  window.autoscroll = true;
-  function userIsAtBottom(){
-    const threshold = 40; // px
-    try{ return window.messagesEl.scrollHeight - window.messagesEl.scrollTop - window.messagesEl.clientHeight < threshold; }catch(e){ return true; }
-  }
-  try{ window.messagesEl.addEventListener('scroll', ()=>{
-    // if user scrolls up, disable autoscroll
-    window.autoscroll = userIsAtBottom();
-    // infinite scroll trigger: when near top, load older messages
-    try{
-      if(window.messagesEl.scrollTop < 50 && currentRoom){
-        // load older messages
-        if(isDialog){
-          loadDialogMessages(currentRoom.id, {before: window.earliestTimestamp, prepend: true});
-        } else {
-          loadRoomMessages(currentRoom.id, {before: window.earliestTimestamp, prepend: true});
-        }
-      }
-    }catch(e){}
-  }); }catch(e){}
+  // initialize messages UI (autoscroll + infinite-scroll) - implemented in static/app/messages-ui.js
+  try{ if(window && typeof window.initMessagesUi === 'function') window.initMessagesUi(); }catch(e){}
 
   // track earliest message timestamp currently rendered for infinite scroll
   // expose timestamps to extracted rooms module
@@ -132,38 +113,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
   async function loadDialogMessages(otherId, opts){ try{ if(window && typeof window.loadDialogMessages === 'function') return await window.loadDialogMessages(otherId, opts); }catch(e){} }
 
-  // bootstrap auth via /refresh; if unauthenticated redirect to login page
-  async function bootstrap(){
-    const r = await fetch('/refresh', {method: 'POST', credentials: 'include'}).catch(()=>null);
-    if(!r || r.status === 401){
-      // redirect to the hosted login page which will set cookie on success
-  location.href = '/static/auth/login.html';
-      return;
-    }
-    // if logged in, the response contains token and user metadata
-    try{
-      const body = await r.json();
-      const user = body.user;
-      if(user){
-        const ui = document.getElementById('user-info');
-        if(ui){
-          try{
-            if(window && typeof window.renderUserInfo === 'function'){
-              window.renderUserInfo(user);
-            } else {
-              // minimal fallback
-              ui.textContent = escapeHtml(user.username || user.email || ('user'+user.id));
-            }
-          }catch(e){ console.warn('renderUserInfo failed', e); }
-        }
-      }
-    }catch(e){ console.warn('refresh parse failed', e); }
-    // ready: load data
-    await loadRooms();
-    await loadContacts();
-    // update unread notification badges
-    try{ await loadUnreadSummary(); }catch(e){}
-  }
+  // bootstrap loader moved to static/app/bootstrap.js
+  try{ if(window && typeof window.bootstrap === 'function') window.bootstrap(); }catch(e){}
 
   // simple escape for username rendering
   function escapeHtml(str){
