@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures');
 
 // Test the register flow: intercept /register to simulate success and ensure redirect to /static/home.html
 test('register -> real backend -> home loads and UI initialized', async ({ page }) => {

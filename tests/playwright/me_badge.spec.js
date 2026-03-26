@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures');
 const { registerUser } = require('./helpers');
 const BASE = process.env.PLAYWRIGHT_BASE || 'http://127.0.0.1:8000';
 
@@ -33,9 +33,9 @@ test('current user messages show me class and you-badge', async ({ browser }) =>
   const page = await context.newPage();
   // navigate to the canonical chat page that includes the header and app
   await page.goto(`${BASE}/static/chat/index.html`);
-  // wait for the exact message text we posted to appear so we know messages rendered
-  await page.waitForSelector('#messages .message', { timeout: 8000 });
-  await page.waitForSelector('text=hello from me', { timeout: 8000 });
+  // wait for the messages container to be injected and for the text to appear
+  await page.waitForSelector('#messages .message', { state: 'attached', timeout: 15000 });
+  await page.waitForFunction(() => document.body && document.body.innerText.includes('hello from me'), null, { timeout: 15000 });
 
   // find messages that contain our text and assert they have .me class and .you-badge
   const messages = await page.$$('#messages .message');

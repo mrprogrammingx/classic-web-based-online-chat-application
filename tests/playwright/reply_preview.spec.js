@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures');
 const helpers = require('./helpers');
 
 // Full E2E: register two users via API, create a private room, post an original message as A,

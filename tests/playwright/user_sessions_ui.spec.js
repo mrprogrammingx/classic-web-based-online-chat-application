@@ -1,4 +1,4 @@
-const { test, expect, request } = require('@playwright/test');
+const { test, expect, request } = require('./fixtures');
 const helpers = require('./helpers');
 
 const BASE = process.env.PLAYWRIGHT_BASE || 'http://127.0.0.1:8000';

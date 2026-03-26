@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures');
 const helpers = require('./helpers');
 
 test('open unread panel shows items or empty state', async ({ browser, request }) => {
