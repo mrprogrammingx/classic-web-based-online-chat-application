@@ -2,7 +2,11 @@
 // Centralized header loading: inject a small skeleton, fetch /static/header.html,
 // replace the skeleton with the canonical fragment, execute any scripts found
 // in the fragment, apply per-page customizations (from #header-custom), and
-// dispatch `shared-header-loaded`.
+// header-loader.js
+// Centralized header loading: inject a small skeleton, fetch header fragment,
+// replace the skeleton with the canonical fragment, execute any scripts
+// found in the fragment, apply per-page customizations (from #header-custom),
+// and dispatch `shared-header-loaded`.
 (function(){
   'use strict';
   function escapeHtml(s){ return String(s||'').replace(/[&<>'"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":"&#39;", '"':'&quot;' })[c]); }
@@ -36,18 +40,25 @@
       if(cust.dataset.adminButtonHref) cfg.adminHref = cust.dataset.adminButtonHref;
     }
 
-  // expose resolved site config for other scripts to consume (global read-only)
-  try{ window.SITE_CONFIG = Object.assign({}, cfg); }catch(e){}
+    // expose resolved site config for other scripts to consume (global read-only)
+    try{ window.SITE_CONFIG = Object.assign({}, cfg); }catch(e){}
 
-  // insert small skeleton immediately so early scripts can find the DOM ids
+    // insert small skeleton immediately so early scripts can find the DOM ids
     ph.innerHTML = `<header class="topmenu"><div class="brand">${escapeHtml(cfg.brand)}</div><nav class="topnav"><div class="nav-left"><a href="${escapeHtml(cfg.mainHref)}" class="btn btn-secondary" id="btn-back-to-chat">${escapeHtml(cfg.mainButtonText)}</a></div><div id="user-info" class="user-info" aria-live="polite"></div><div id="notifications" class="nav-notifications"><button id="unread-total" class="unread-total" title="Unread notifications" aria-live="polite" aria-atomic="true"><span class="unread-icon">📨</span><span class="unread-count">0</span></button><span id="unread-live" class="sr-only" aria-live="polite"></span></div></nav></header>`;
 
-  // header fragment may be served from either /header/header.html or
-  // /static/header/header.html depending on how the server is configured.
-  // Try the shorter path first; if the response is not OK (404), fetch the
-  // static path as a fallback.
-  return fetch('/header/header.html').then(r=>{ if(r && r.ok) return r; return fetch('/static/header/header.html'); }).catch(()=> fetch('/static/header/header.html'));
-  }).then(r=>r.text()).then(html=>{
+    // header fragment may be served from either /static/header/header.html or
+    // /header/header.html depending on how the server is configured.
+    // Prefer the static path first to reduce 404 noise in browser consoles.
+    return fetch('/static/header/header.html').then(r=>{ if(r && r.ok) return r; return fetch('/header/header.html'); }).catch(()=> fetch('/header/header.html'));
+  }).then(r=>{
+    if(!r || !r.ok){
+      // nothing to inject; leave skeleton in place and notify listeners
+      try{ window.dispatchEvent(new Event('shared-header-loaded')); }catch(e){}
+      return null;
+    }
+    return r.text();
+  }).then(html=>{
+    if(!html) return;
     try{
       // parse fetched fragment into a temp container
       const container = document.createElement('div'); container.innerHTML = html;

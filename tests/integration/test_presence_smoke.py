@@ -1,6 +1,6 @@
 import pytest
 import requests
-from tests.test_auth_admin import BASE, server_available, unique_email
+from test_auth_admin import BASE, server_available, unique_email
 
 
 @pytest.mark.skipif(not server_available(), reason="server not running on localhost:8000")

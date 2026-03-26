@@ -3,7 +3,7 @@ const { devices } = require('@playwright/test');
 
 /** @type {import('@playwright/test').PlaywrightTestConfig} */
 module.exports = {
-  testDir: 'tests/playwright',
+  testDir: 'tests/e2e/playwright',
   timeout: 60 * 1000,
   expect: { timeout: 5000 },
   reporter: [ ['list'], ['html', { open: 'never' }] ],
