@@ -39,11 +39,18 @@ APIs (summary)
 - handleComposerSubmit(event: Event) => Promise<void>
   - Purpose: Composer submit handler that performs atomic message sends (and optional file upload). Implemented in `static/app/composer.js` and delegated to from `app.js`.
 
+- initEmojiPicker() => void
+  - Purpose: Initialize the inline emoji picker UI. Implemented in `static/app/emoji.js` and invoked from `app.js`.
+
+- initFileAttachments() => void
+  - Purpose: Initialize file attachment selection UI (preview/remove). Implemented in `static/app/attachments.js` and invoked from `app.js`.
+
 - startHeartbeat(), startPresencePolling(), closePresence()
   - Purpose: Presence and heartbeat helpers. Implemented in `static/app/presence.js`.
 
 - loadSessions() / openAdminPanel()
   - Purpose: Session and admin UI helpers. Implemented in `static/app/sessions.js` or provided by the main app.
+  - Note: A fallback `openAdminPanel` implementation now exists in `static/app/admin.js` and is exposed on `window.openAdminPanel` so pages can call it regardless of header/main script ordering.
 
 Window state (shared globals)
 - window.messagesEl: HTMLElement | null — the message list container (`#messages`).
