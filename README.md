@@ -97,7 +97,7 @@ If you'd like, I can add a CI workflow (GitHub Actions), improve search (case-in
 
 ## Playwright (browser) E2E tests
 
-Quick notes for running the Playwright end-to-end tests that exercise the real UI (the project contains a Playwright spec at `tests/playwright/reply_preview.spec.js` and a small helper at `tests/playwright/helpers.js`).
+Quick notes for running the Playwright end-to-end tests that exercise the real UI (the project contains a Playwright spec at `tests/e2e/playwright/reply_preview.spec.js` and a small helper at `tests/e2e/playwright/helpers.js`).
 
 - Prerequisites: Node.js + npm (for Playwright), and the project Python virtualenv (see Quick start above).
 - Install JS dependencies:
@@ -122,12 +122,12 @@ npx playwright install
 - Run the single Playwright spec:
 
 ```bash
-npx playwright test tests/playwright/reply_preview.spec.js
+npx playwright test tests/e2e/playwright/reply_preview.spec.js
 # or via npm script if present: npm run test:playwright
 ```
 
 Notes:
-- The Playwright spec uses the API to register users and sets the server-issued HttpOnly `token` cookie directly in the browser context to avoid interactive login. That helper is in `tests/playwright/helpers.js`.
+- The Playwright spec uses the API to register users and sets the server-issued HttpOnly `token` cookie directly in the browser context to avoid interactive login. That helper is in `tests/e2e/playwright/helpers.js`.
 - The CI workflow at `.github/workflows/playwright.yml` in this repo runs the same spec on pushes/PRs. The workflow starts a uvicorn server in the background before running Playwright.
 - If tests fail because the server isn't ready, wait for `http://127.0.0.1:8000` to respond or increase the startup sleep/probe in CI.
 
