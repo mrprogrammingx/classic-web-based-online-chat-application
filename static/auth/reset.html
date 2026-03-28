@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Set new password</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="login-overlay">
+    <div class="login-box" role="dialog" aria-modal="true">
+      <h3>Set new password</h3>
+      <form>
+        <input id="token" placeholder="reset token" />
+        <input id="password" placeholder="new password" type="password" />
+        <div style="display:flex;gap:8px;justify-content:space-between;align-items:center">
+          <button id="reset" type="button">Set password</button>
+          <a href="/static/auth/login.html">Login</a>
+        </div>
+      </form>
+      <p id="reset-note" style="margin-top:8px"></p>
+    </div>
+  </div>
+
+  <script src="/static/site-config.js"></script>
+  <script src="/static/app/lib/auth-pages.js"></script>
+  <script src="/static/main.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', ()=>{
+      try{
+        const btn = document.getElementById('reset');
+        if(!btn) return;
+        btn.addEventListener('click', async (ev)=>{
+          try{
+            btn.disabled = true;
+            if(typeof window.performReset === 'function') return window.performReset();
+            const s = document.createElement('script'); s.src = '/static/app/lib/auth-pages.js'; s.async = true;
+            s.onload = ()=>{ try{ if(typeof window.performReset === 'function') window.performReset(); }catch(e){} finally{ btn.disabled = false; } };
+            s.onerror = ()=>{ btn.disabled = false; };
+            document.head.appendChild(s);
+          }catch(e){ btn.disabled = false; }
+        });
+      }catch(e){}
+    });
+  </script>
+  <div id="modal-root" aria-hidden="true"></div>
+  <div id="toast-root" aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>
