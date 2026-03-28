@@ -115,6 +115,19 @@ async def check_ban_for_users(user_id: int, other_id: int) -> bool:
         return bool(row)
 
 
+async def list_bans_for_user(user_id: int):
+    async with aiosqlite.connect(db.DB) as conn:
+        cur = await conn.execute('SELECT b.banned_id, u.username, u.email, b.created_at FROM bans b LEFT JOIN users u ON u.id = b.banned_id WHERE b.banner_id = ?', (user_id,))
+        rows = await cur.fetchall()
+        return [{'banned_id': r[0], 'username': r[1], 'email': r[2], 'created_at': r[3]} for r in rows]
+
+
+async def unban_user_action(user_id: int, banned_id: int) -> None:
+    async with aiosqlite.connect(db.DB) as conn:
+        await conn.execute('DELETE FROM bans WHERE banner_id = ? AND banned_id = ?', (user_id, banned_id))
+        await conn.commit()
+
+
 async def remove_friend_action(user_id: int, fid: int) -> None:
     async with aiosqlite.connect(db.DB) as conn:
         await conn.execute('DELETE FROM friends WHERE user_id = ? AND friend_id = ?', (user_id, fid))
