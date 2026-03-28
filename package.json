@@ -2,13 +2,19 @@
   "name": "chat-app-tests",
   "version": "1.0.0",
   "scripts": {
+    "test:jsdom": "jest --config=jest.config.cjs",
     "test:playwright": "playwright test",
+    "test:playwright:served": "bash scripts/serve_playwright_test.sh",
     "test:e2e": "npx playwright test tests/e2e/playwright --reporter=list,html",
     "test:unit": "pytest -q tests/unit",
     "test:integration": "pytest -q tests/integration",
     "test": "npm run test:unit && npm run test:integration"
   },
   "devDependencies": {
+    "jest": "^29.7.0",
     "@playwright/test": "^1.40.0"
+  },
+  "dependencies": {
+    "jest-environment-jsdom": "^29.5.0"
   }
 }
