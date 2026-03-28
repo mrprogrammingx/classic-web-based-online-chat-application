@@ -14,6 +14,7 @@ def register_routers(app: FastAPI) -> None:
     from .rooms import router as rooms_router
     from .notifications import router as notifications_router
     from .users import router as users_router
+    from .sessions import router as sessions_router
 
     app.include_router(presence_router)
     app.include_router(admin_router)
@@ -22,3 +23,4 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(rooms_router)
     app.include_router(notifications_router)
     app.include_router(users_router)
+    app.include_router(sessions_router)
