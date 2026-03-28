@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 import aiosqlite
 import time
 from db import DB
-from utils import require_auth
+from core.utils import require_auth
 
 router = APIRouter()
 
