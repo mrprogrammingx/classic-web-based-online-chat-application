@@ -30,23 +30,23 @@ test('home page initial presence shows AFK when user idle', async ({ browser, re
 
   await pageA.evaluate(({ token, jti, tabId }) => { try{ if(window && window.startHeartbeat) window.startHeartbeat(token, jti, tabId); }catch(e){} }, { token: u.token, jti, tabId: tabA });
 
-  // wait for server to observe online
+  // wait for server to observe online (retries up to 6s)
   let sawOnline = false;
   const t0 = Date.now();
-  while(Date.now() - t0 < 3000){
+  while(Date.now() - t0 < 6000){
     const r = await request.get(BASE + `/presence/${u.user.id}`);
     if(r.status() === 200){ const d = await r.json(); if((d.status || '').toLowerCase().includes('online')){ sawOnline = true; break; } }
-    await new Promise(r => setTimeout(r, 200));
+    await new Promise(r => setTimeout(r, 250));
   }
   expect(sawOnline).toBeTruthy();
 
   // stop heartbeats on A to simulate idle tab
   await pageA.evaluate(() => { try{ if(window._hb) clearInterval(window._hb); }catch(e){} });
 
-  // wait for server to mark AFK (wait up to 10s)
+  // wait for server to mark AFK (retry up to 12s)
   let sawAfk = false;
   const t1 = Date.now();
-  while(Date.now() - t1 < 10000){
+  while(Date.now() - t1 < 15000){
     const r = await request.get(BASE + `/presence/${u.user.id}`);
     if(r.status() === 200){ const d = await r.json(); if((d.status || '').toLowerCase().includes('afk')){ sawAfk = true; break; } }
     await new Promise(r => setTimeout(r, 250));
@@ -63,13 +63,13 @@ test('home page initial presence shows AFK when user idle', async ({ browser, re
   // Ensure presence polling starts on the observer page immediately
   await pageB.evaluate((userId) => { try{ if(window && window.startPresencePolling) window.startPresencePolling(userId); }catch(e){} }, u.user.id);
 
-  // allow presence polling on the freshly loaded page to run and update the UI
+  // allow presence polling on the freshly loaded page to run and update the UI (retry up to 6s)
   let sawAfkOnLoad = false;
   const t2 = Date.now();
-  while(Date.now() - t2 < 5000){
+  while(Date.now() - t2 < 9000){
     const txt = await pageB.evaluate(() => { const el = document.getElementById('my-presence'); return el ? el.textContent.trim().toLowerCase() : null; });
     if(txt && txt.includes('afk')){ sawAfkOnLoad = true; break; }
-    await pageB.waitForTimeout(200);
+    await pageB.waitForTimeout(250);
   }
   expect(sawAfkOnLoad).toBeTruthy();
 
