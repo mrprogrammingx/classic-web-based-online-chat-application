@@ -18,8 +18,10 @@ test('user dropdown shows sessions and revoke flow displays modal and toast', as
   await page.waitForSelector('#user-toggle', { timeout: 5000 });
   // open dropdown
   await page.click('#user-toggle');
-  // sessions list should show at least one item
-  await page.waitForSelector('.sessions-list li', { timeout: 5000 });
+  // small pause for dropdown animation/render
+  await page.waitForTimeout(300);
+  // sessions list should show at least one item; wait specifically for a revoke button to appear
+  await page.waitForSelector('.sessions-list li button', { timeout: 7000 });
   // find a Revoke button and click it (this will open the modal)
   const revokeBtn = await page.$('.sessions-list li button');
   expect(revokeBtn).not.toBeNull();

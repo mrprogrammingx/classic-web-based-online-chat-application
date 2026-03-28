@@ -34,6 +34,10 @@ test('current user messages show me class and you-badge', async ({ browser }) =>
   // navigate to the canonical chat page that includes the header and app
   await page.goto(`${BASE}/static/chat/index.html`);
   // wait for the messages container to be injected and for the text to appear
+  // select the room we created so the client loads messages for it
+  await page.waitForSelector('#rooms-list', { timeout: 5000 });
+  // click the room list item that matches the room name (may be slightly delayed)
+  await page.click(`li[data-id=\"${roomId}\"]`).catch(()=>null);
   await page.waitForSelector('#messages .message', { state: 'attached', timeout: 15000 });
   await page.waitForFunction(() => document.body && document.body.innerText.includes('hello from me'), null, { timeout: 15000 });
 
