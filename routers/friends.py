@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, Depends, HTTPException
-from utils import require_auth
+from core.utils import require_auth
 from services import friends_service
 
 router = APIRouter()
@@ -38,7 +38,11 @@ async def send_friend_request(request: Request, user=Depends(require_auth)):
     except LookupError:
         raise HTTPException(status_code=404, detail='user not found')
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        # some ValueErrors indicate a conflict (duplicate request or already friends)
+        msg = str(e)
+        if 'friend request already pending' in msg or 'already friends' in msg:
+            raise HTTPException(status_code=409, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
     except PermissionError:
         raise HTTPException(status_code=403, detail='ban exists between users')
     except Exception:

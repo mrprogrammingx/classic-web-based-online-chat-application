@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Query, Depends
 import aiosqlite
 from db import DB
-from utils import require_auth
+from core.utils import require_auth
 
 router = APIRouter()
 
