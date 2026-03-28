@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 import aiosqlite
 from db import init_db, DB
 import uuid
-from routers.utils import (
+from core.utils import (
     hash_pw,
     verify_pw,
     create_token,
@@ -17,6 +17,7 @@ from routers.utils import (
     require_auth,
     presence_online_seconds,
 )
+from core.config import SESSION_COOKIE_NAME, SESSION_DEFAULT_EXPIRES_SECONDS
 from routers import register_routers
 import os
 
@@ -54,13 +55,13 @@ async def register(request: Request):
         row = await cur.fetchone()
         user = {'id': row[0], 'email': row[1], 'username': row[2], 'is_admin': bool(row[3])}
     jti = str(uuid.uuid4())
-    expires = int(time.time() + 3600*24*30)
+    expires = int(time.time() + SESSION_DEFAULT_EXPIRES_SECONDS)
     ip = request.client.host if request.client else None
     ua = request.headers.get('user-agent')
     await store_session(jti, user['id'], expires, ip=ip, user_agent=ua)
-    token = create_token({'id': user['id'], 'email': user['email'], 'username': user['username'], 'jti': jti}, exp_seconds=3600*24*30)
+    token = create_token({'id': user['id'], 'email': user['email'], 'username': user['username'], 'jti': jti}, exp_seconds=SESSION_DEFAULT_EXPIRES_SECONDS)
     resp = JSONResponse({'user': user, 'token': token})
-    resp.set_cookie(key='token', value=token, httponly=True, samesite='lax')
+    resp.set_cookie(key=SESSION_COOKIE_NAME, value=token, httponly=True, samesite='lax')
     return resp
 
 
@@ -78,13 +79,13 @@ async def login(request: Request):
             raise HTTPException(status_code=401, detail='invalid credentials')
         user = {'id': row[0], 'email': row[1], 'username': row[2], 'is_admin': bool(row[4])}
     jti = str(uuid.uuid4())
-    expires = int(time.time() + 3600*24*30)
+    expires = int(time.time() + SESSION_DEFAULT_EXPIRES_SECONDS)
     ip = request.client.host if request.client else None
     ua = request.headers.get('user-agent')
     await store_session(jti, user['id'], expires, ip=ip, user_agent=ua)
-    token = create_token({'id': user['id'], 'email': user['email'], 'username': user['username'], 'jti': jti}, exp_seconds=3600*24*30)
+    token = create_token({'id': user['id'], 'email': user['email'], 'username': user['username'], 'jti': jti}, exp_seconds=SESSION_DEFAULT_EXPIRES_SECONDS)
     resp = JSONResponse({'user': user, 'token': token})
-    resp.set_cookie(key='token', value=token, httponly=True, samesite='lax')
+    resp.set_cookie(key=SESSION_COOKIE_NAME, value=token, httponly=True, samesite='lax')
     return resp
 
 
@@ -141,11 +142,59 @@ async def create_test_user(request: Request):
             row = await cur.fetchone()
             user = {'id': row[0], 'email': row[1], 'username': row[2], 'is_admin': bool(row[3])}
     jti = str(uuid.uuid4())
-    expires = int(time.time() + 3600*24*30)
+    expires = int(time.time() + SESSION_DEFAULT_EXPIRES_SECONDS)
     ip = request.client.host if request.client else None
     ua = request.headers.get('user-agent')
     await store_session(jti, user['id'], expires, ip=ip, user_agent=ua)
-    token = create_token({'id': user['id'], 'email': user['email'], 'username': user['username'], 'jti': jti}, exp_seconds=3600*24*30)
+    token = create_token({'id': user['id'], 'email': user['email'], 'username': user['username'], 'jti': jti}, exp_seconds=SESSION_DEFAULT_EXPIRES_SECONDS)
     resp = JSONResponse({'user': user, 'token': token})
-    resp.set_cookie(key='token', value=token, httponly=True, samesite='lax')
+    resp.set_cookie(key=SESSION_COOKIE_NAME, value=token, httponly=True, samesite='lax')
+    return resp
+
+
+
+@app.get('/me')
+async def me(request: Request, data=Depends(require_auth)):
+    # return full user metadata for the current session
+    user_id = data.get('id')
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute('SELECT id, email, username, is_admin FROM users WHERE id = ?', (user_id,))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='user not found')
+        user = {'id': row[0], 'email': row[1], 'username': row[2], 'is_admin': bool(row[3])}
+    return {'user': user}
+
+
+@app.patch('/me')
+async def me_patch(request: Request, data=Depends(require_auth)):
+    # For now username is immutable; tests expect a 400 when attempting to change it.
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail='invalid payload')
+    if 'username' in body:
+        raise HTTPException(status_code=400, detail='username is immutable')
+    # Accept other no-op updates for now
+    return {'ok': True}
+
+
+@app.post('/refresh')
+async def refresh(request: Request, data=Depends(require_auth)):
+    # issue a fresh token (keeps behavior similar to login/register)
+    user_id = data.get('id')
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute('SELECT id, email, username, is_admin FROM users WHERE id = ?', (user_id,))
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail='user not found')
+        user = {'id': row[0], 'email': row[1], 'username': row[2], 'is_admin': bool(row[3])}
+    # create a new session jti and store it
+    jti = str(uuid.uuid4())
+    expires = int(time.time() + SESSION_DEFAULT_EXPIRES_SECONDS)
+    ip = request.client.host if request.client else None
+    ua = request.headers.get('user-agent')
+    await store_session(jti, user['id'], expires, ip=ip, user_agent=ua)
+    token = create_token({'id': user['id'], 'email': user['email'], 'username': user['username'], 'jti': jti}, exp_seconds=SESSION_DEFAULT_EXPIRES_SECONDS)
+    resp = JSONResponse({'user': user, 'token': token})
+    resp.set_cookie(key=SESSION_COOKIE_NAME, value=token, httponly=True, samesite='lax')
     return resp
