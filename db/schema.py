@@ -1,8 +1,23 @@
 import aiosqlite
-from core.config import DB_PATH as DB
+import core.config as config
+
+
+def _db_path():
+    # If tests or callers set module-level DB (e.g. `schema.DB = '/tmp/x'`),
+    # prefer that. Otherwise fall back to core.config.DB_PATH which reads
+    # AUTH_DB_PATH lazily.
+    global DB
+    if 'DB' in globals() and DB:
+        return DB
+    return config.DB_PATH
+
+
+# Allow callers/tests to override DB path by assigning `db.schema.DB = '...'`.
+DB = None
+
 
 async def init_db():
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(_db_path()) as db:
         await db.executescript('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -93,6 +108,20 @@ async def init_db():
             await db.commit()
         except Exception:
             # ignore if create index fails for any reason (older DBs etc.)
+            pass
+        # ensure memberships are unique per (room_id, user_id) to prevent duplicates
+        try:
+            # remove any historical duplicates keeping the earliest inserted row
+            await db.execute("DELETE FROM memberships WHERE id NOT IN (SELECT MIN(id) FROM memberships GROUP BY room_id, user_id);")
+            await db.commit()
+        except Exception:
+            # ignore if delete fails for any reason
+            pass
+        try:
+            await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_memberships_room_user_unique ON memberships(room_id, user_id);")
+            await db.commit()
+        except Exception:
+            # ignore if create index fails for any reason
             pass
         # create helpful indexes for user lookup (searches by username/email)
         try:
@@ -382,3 +411,15 @@ async def init_db():
             except Exception:
                 # ignore failures on older DBs
                 pass
+
+        # create password_resets table for handling password reset tokens
+        await db.executescript('''
+        CREATE TABLE IF NOT EXISTS password_resets (
+            token TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            created_at INTEGER,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        ''')
+        await db.commit()
