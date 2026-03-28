@@ -6,7 +6,8 @@ import logging
 from db import DB
 from fastapi import HTTPException, Request
 from typing import List, Dict, Any, Optional
-from core.config import JWT_SECRET, JWT_ALGO, PRESENCE_ONLINE_SECONDS
+from core.config import JWT_SECRET, JWT_ALGO
+import core.config as config
 from pathlib import Path
 from core.logging_setup import ensure_file_handler
 
@@ -26,7 +27,9 @@ ensure_file_handler(logger)
 
 
 def presence_online_seconds() -> int:
-    return int(PRESENCE_ONLINE_SECONDS)
+    # Evaluate the config value at call time so tests can change environment
+    # variables prior to starting the server or calling presence helpers.
+    return int(config.PRESENCE_ONLINE_SECONDS)
 
 
 def hash_pw(pw: str) -> str:
@@ -51,8 +54,12 @@ def verify_token(token: str) -> Dict[str, Any]:
 
 async def store_session(jti: str, user_id: int, expires_at: int, ip: Optional[str] = None, user_agent: Optional[str] = None, last_active: Optional[int] = None):
     async with aiosqlite.connect(DB) as db:
+        # Do NOT default last_active to now — heartbeats should explicitly
+        # set the session's last_active. Storing NULL here keeps newly
+        # created sessions from being considered 'online' until activity
+        # (heartbeat) occurs.
         await db.execute('INSERT INTO sessions (jti, user_id, created_at, expires_at, ip, user_agent, last_active) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                         (jti, user_id, int(time.time()), expires_at, ip, user_agent, last_active or int(time.time())))
+                         (jti, user_id, int(time.time()), expires_at, ip, user_agent, last_active))
         await db.commit()
 
 
@@ -186,9 +193,12 @@ async def get_presence_statuses(user_ids: list) -> Dict[str, str]:
         for uid in user_ids:
             if uid not in found:
                 out[str(uid)] = 'offline'
-        # For any user not already marked online, check sessions.last_active as a fallback
-        # Build a list of users to check
-        to_check = [int(u) for u, s in out.items() if s != 'online']
+        # For any user that has no tab_presence rows (marked 'offline'),
+        # check sessions.last_active as a fallback. Do NOT override 'AFK'
+        # derived from tab_presence with session activity — tests expect an
+        # explicitly-old tab_presence to indicate AFK even if the session
+        # last_active is recent.
+        to_check = [int(u) for u, s in out.items() if s == 'offline']
         if to_check:
             placeholders2 = ','.join(['?'] * len(to_check))
             sql2 = f"SELECT user_id, MAX(last_active) as sess_last FROM sessions WHERE user_id IN ({placeholders2}) GROUP BY user_id"
