@@ -34,6 +34,11 @@ def test_public_rooms_catalog_and_join(client):
     assert found1 and found2
     # member_count should be >= 1 for owner-created rooms (owner was added automatically)
     assert found1[0]['member_count'] >= 1
+    # the catalog should include an explicit is_member boolean for each room
+    # since this request is authenticated as the joiner (not yet a member) it
+    # should be False for the room the joiner didn't create/join yet.
+    assert 'is_member' in found1[0]
+    assert found1[0]['is_member'] is False
 
     # join rn1
     jr = client.post(f"/rooms/{found1[0]['id']}/join")
@@ -44,6 +49,9 @@ def test_public_rooms_catalog_and_join(client):
     rooms2 = catalog2.json()['rooms']
     f1 = [r for r in rooms2 if r['name'] == rn1][0]
     assert f1['member_count'] >= found1[0]['member_count'] + 1 - 1  # at least same or increment
+    # after joining, the is_member flag should be True for this user
+    assert 'is_member' in f1
+    assert f1['is_member'] is True
 
     # search by q should find appropriate room
     search = client.get('/rooms?q=talk')
