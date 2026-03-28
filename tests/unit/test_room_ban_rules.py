@@ -36,7 +36,8 @@ def test_removal_treated_as_ban_and_file_access(client, tmp_path):
         f.write('secret')
     # insert room_files record directly
     import sqlite3
-    conn = sqlite3.connect('auth.db')
+    from core.config import DB_PATH
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute('INSERT INTO room_files (room_id, path, created_at) VALUES (?, ?, ?)', (rid, fname, 1))
     conn.commit()

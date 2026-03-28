@@ -13,7 +13,8 @@ def test_admin_rooms_pagination_and_search():
     r = requests.post(BASE + '/register', json={'email': admin_email, 'username': admin_username, 'password': pw})
     assert r.status_code == 200
     admin_token = r.json().get('token'); admin_user = r.json().get('user')
-    conn = sqlite3.connect('auth.db'); cur = conn.cursor(); cur.execute('UPDATE users SET is_admin = 1 WHERE id = ?', (admin_user['id'],)); conn.commit(); conn.close()
+    from core.config import DB_PATH
+    conn = sqlite3.connect(DB_PATH); cur = conn.cursor(); cur.execute('UPDATE users SET is_admin = 1 WHERE id = ?', (admin_user['id'],)); conn.commit(); conn.close()
 
     # create 11 rooms, give some distinctive names for search
     room_ids = []

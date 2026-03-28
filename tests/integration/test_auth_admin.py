@@ -42,7 +42,8 @@ def test_register_login_and_me():
 
 
 def promote_user_in_db(user_id: int):
-    conn = sqlite3.connect('auth.db')
+    from core.config import DB_PATH
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute('UPDATE users SET is_admin = 1 WHERE id = ?', (user_id,))
     conn.commit()
@@ -82,7 +83,8 @@ def test_admin_promote_and_access():
     assert r.json().get('ok') is True
 
     # verify in DB that target is now admin
-    conn = sqlite3.connect('auth.db')
+    from core.config import DB_PATH
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute('SELECT is_admin FROM users WHERE id = ?', (target_user['id'],))
     row = cur.fetchone()

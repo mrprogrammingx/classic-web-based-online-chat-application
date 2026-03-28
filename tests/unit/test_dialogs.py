@@ -102,7 +102,8 @@ def test_dialog_attachments_listing_and_serving_permissions(client):
     with open(fpath, 'w') as fh:
         fh.write('attachment')
     import sqlite3
-    conn = sqlite3.connect('auth.db')
+    from core.config import DB_PATH
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     # we don't need a message_id for the test; insert both directions to ensure listing works
     cur.execute('INSERT INTO private_message_files (message_id, from_id, to_id, path, created_at) VALUES (?, ?, ?, ?, ?)', (None, a['id'], b['id'], fname, 1))

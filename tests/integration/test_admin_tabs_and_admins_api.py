@@ -26,7 +26,8 @@ def test_admin_users_filter_admins():
     r = requests.post(BASE + '/register', json={'email': admin_email, 'username': admin_username, 'password': pw})
     assert r.status_code == 200
     admin_token = r.json().get('token'); admin_user = r.json().get('user')
-    conn = sqlite3.connect('auth.db'); cur = conn.cursor(); cur.execute('UPDATE users SET is_admin = 1 WHERE id = ?', (admin_user['id'],)); conn.commit(); conn.close()
+    from core.config import DB_PATH
+    conn = sqlite3.connect(DB_PATH); cur = conn.cursor(); cur.execute('UPDATE users SET is_admin = 1 WHERE id = ?', (admin_user['id'],)); conn.commit(); conn.close()
 
     # create a target user and promote them to admin in DB
     t_email = unique_email()
@@ -34,7 +35,8 @@ def test_admin_users_filter_admins():
     tr = requests.post(BASE + '/register', json={'email': t_email, 'username': t_username, 'password': 'pw'})
     assert tr.status_code == 200
     target = tr.json().get('user')
-    conn = sqlite3.connect('auth.db'); cur = conn.cursor(); cur.execute('UPDATE users SET is_admin = 1 WHERE id = ?', (target['id'],)); conn.commit(); conn.close()
+    from core.config import DB_PATH
+    conn = sqlite3.connect(DB_PATH); cur = conn.cursor(); cur.execute('UPDATE users SET is_admin = 1 WHERE id = ?', (target['id'],)); conn.commit(); conn.close()
 
     # request admin users filtered
     h = {'Authorization': f'Bearer {admin_token}'}

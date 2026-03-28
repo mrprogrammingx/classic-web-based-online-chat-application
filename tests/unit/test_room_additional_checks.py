@@ -49,7 +49,8 @@ def test_file_serving_permissions(client):
     with open(fpath, 'w') as f:
         f.write('private secret')
     import sqlite3
-    conn = sqlite3.connect('auth.db')
+    from core.config import DB_PATH
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute('INSERT INTO room_files (room_id, path, created_at) VALUES (?, ?, ?)', (rid, fname, 1))
     conn.commit()
@@ -74,7 +75,8 @@ def test_file_serving_permissions(client):
     client.s.headers.update({'Authorization': f'Bearer {owner_token}'})
     # directly flip visibility in DB for test simplicity
     import sqlite3 as _sqlite
-    conn = _sqlite.connect('auth.db')
+    from core.config import DB_PATH
+    conn = _sqlite.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute("UPDATE rooms SET visibility = 'public' WHERE id = ?", (rid,))
     conn.commit()

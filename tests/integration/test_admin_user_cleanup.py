@@ -14,7 +14,8 @@ def test_delete_user_cascades_related_records():
     assert r.status_code == 200
     admin_token = r.json().get('token'); admin_user = r.json().get('user')
     # make admin in DB
-    conn = sqlite3.connect('auth.db'); cur = conn.cursor(); cur.execute('UPDATE users SET is_admin = 1 WHERE id = ?', (admin_user['id'],)); conn.commit(); conn.close()
+    from core.config import DB_PATH
+    conn = sqlite3.connect(DB_PATH); cur = conn.cursor(); cur.execute('UPDATE users SET is_admin = 1 WHERE id = ?', (admin_user['id'],)); conn.commit(); conn.close()
 
     # create target user
     target_email = unique_email(); target_username = 'tgt-' + uuid.uuid4().hex[:8]
@@ -23,7 +24,8 @@ def test_delete_user_cascades_related_records():
     target = r.json().get('user')
 
     # create side-effects directly in DB: ban, friend, session, membership, message, dialog read
-    conn = sqlite3.connect('auth.db'); cur = conn.cursor()
+    from core.config import DB_PATH
+    conn = sqlite3.connect(DB_PATH); cur = conn.cursor()
     # ban: admin bans target
     cur.execute('INSERT OR IGNORE INTO bans (banner_id, banned_id, created_at) VALUES (?, ?, ?)', (admin_user['id'], target['id'], int(time.time())))
     # session
@@ -52,7 +54,8 @@ def test_delete_user_cascades_related_records():
     assert r.status_code == 200 and r.json().get('ok') is True
 
     # check DB that related rows are gone
-    conn = sqlite3.connect('auth.db'); cur = conn.cursor()
+    from core.config import DB_PATH
+    conn = sqlite3.connect(DB_PATH); cur = conn.cursor()
     cur.execute('SELECT id FROM users WHERE id = ?', (target['id'],)); assert cur.fetchone() is None
     cur.execute('SELECT id FROM bans WHERE banned_id = ?', (target['id'],)); assert cur.fetchone() is None
     cur.execute('SELECT jti FROM sessions WHERE user_id = ?', (target['id'],)); assert cur.fetchone() is None

@@ -37,7 +37,8 @@ def test_room_deletion_removes_messages_and_files(client):
     # so insert by using the DB directly from the test process
     import sqlite3
 
-    conn = sqlite3.connect('auth.db')
+    from core.config import DB_PATH
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute('INSERT INTO room_files (room_id, path, created_at) VALUES (?, ?, ?)', (rid, fname, 1))
     conn.commit()
@@ -52,7 +53,8 @@ def test_room_deletion_removes_messages_and_files(client):
     assert not os.path.exists(fpath)
 
     # DB rows for messages and files should be gone
-    conn = sqlite3.connect('auth.db')
+    from core.config import DB_PATH
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute('SELECT COUNT(*) FROM messages WHERE room_id = ?', (rid,))
     assert cur.fetchone()[0] == 0

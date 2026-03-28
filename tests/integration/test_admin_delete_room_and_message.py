@@ -15,7 +15,8 @@ def test_admin_delete_room_cascades():
     assert r.status_code == 200
     admin_token = r.json().get('token'); admin_user = r.json().get('user')
     # promote to admin in DB
-    conn = sqlite3.connect('auth.db'); cur = conn.cursor(); cur.execute('UPDATE users SET is_admin = 1 WHERE id = ?', (admin_user['id'],)); conn.commit(); conn.close()
+    from core.config import DB_PATH
+    conn = sqlite3.connect(DB_PATH); cur = conn.cursor(); cur.execute('UPDATE users SET is_admin = 1 WHERE id = ?', (admin_user['id'],)); conn.commit(); conn.close()
 
     # create an owner user and a room
     owner_email = unique_email(); owner_username = 'own-' + uuid.uuid4().hex[:8]; pw = 'pw'
@@ -40,7 +41,8 @@ def test_admin_delete_room_cascades():
     fname = f'testfile_room_{rid}.dat'
     fpath = os.path.join('uploads', fname)
     with open(fpath, 'wb') as fh: fh.write(b'zzz')
-    conn = sqlite3.connect('auth.db'); cur = conn.cursor()
+    from core.config import DB_PATH
+    conn = sqlite3.connect(DB_PATH); cur = conn.cursor()
     cur.execute('INSERT INTO room_files (room_id, path, created_at) VALUES (?, ?, ?)', (rid, fname, int(time.time())))
     rfid = cur.lastrowid
     # link message_files to the message
@@ -55,7 +57,8 @@ def test_admin_delete_room_cascades():
     assert r.status_code == 200 and r.json().get('ok') is True
 
     # DB checks
-    conn = sqlite3.connect('auth.db'); cur = conn.cursor()
+    from core.config import DB_PATH
+    conn = sqlite3.connect(DB_PATH); cur = conn.cursor()
     cur.execute('SELECT id FROM rooms WHERE id = ?', (rid,)); assert cur.fetchone() is None
     cur.execute('SELECT COUNT(*) FROM messages WHERE room_id = ?', (rid,)); assert cur.fetchone()[0] == 0
     cur.execute('SELECT COUNT(*) FROM room_files WHERE room_id = ?', (rid,)); assert cur.fetchone()[0] == 0

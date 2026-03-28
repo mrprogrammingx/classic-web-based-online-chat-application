@@ -48,7 +48,8 @@ def test_batch_presence_online_afk_offline(client):
     cutoff = int(os.getenv('PRESENCE_ONLINE_SECONDS', '60'))
     old_ts = int(time.time()) - (cutoff + 10)
     # write directly into the DB so we can simulate an AFK last_active
-    db_path = os.path.join(os.getcwd(), 'auth.db')
+    from core.config import DB_PATH
+    db_path = os.path.join(os.getcwd(), DB_PATH)
     conn = sqlite3.connect(db_path)
     try:
         cur = conn.cursor()
