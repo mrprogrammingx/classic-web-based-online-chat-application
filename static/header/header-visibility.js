@@ -10,7 +10,10 @@
       if(!user){
         try{ const r = await fetch('/me', { credentials: 'include' }); if(r && r.ok){ const j = await r.json().catch(()=>null); if(j && j.user) user = j.user; } }catch(e){}
       }
-      if(user && user.is_admin) adminBtn.style.display = 'inline-flex';
+      if(user && user.is_admin) {
+        adminBtn.style.display = 'inline-flex';
+        try{ const adminLink = document.getElementById('btn-admin-link'); if(adminLink) adminLink.style.display = 'inline'; }catch(e){}
+      }
     }catch(e){ /* ignore */ }
   }
 

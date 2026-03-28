@@ -5,4 +5,5 @@
   "mainButtonText": "Chat",
   "adminButtonText": "Admin",
   "brand": "Presence demo"
+  ,"presencePollMs": 2000
 }
