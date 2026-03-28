@@ -1,0 +1,114 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Rooms</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div id="shared-header-placeholder"></div>
+  <script src="/static/header/header-loader.js"></script>
+  <script src="/static/header/header-visibility.js"></script>
+
+  <main style="max-width:980px;margin:20px auto;padding:12px">
+    <h1>Rooms</h1>
+    <p>Browse public rooms, create a new room (public or private), or join an existing public room.</p>
+
+    <section id="create-room" style="margin-bottom:18px;">
+      <h3>Create room</h3>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input id="new-room-name" placeholder="Room name" style="padding:8px;border:1px solid #e6e9ef;border-radius:8px;flex:1;max-width:320px" />
+        <input id="new-room-description" placeholder="Short description (optional)" style="padding:8px;border:1px solid #e6e9ef;border-radius:8px;flex:1;max-width:420px" />
+        <select id="new-room-visibility" style="padding:8px;border:1px solid #e6e9ef;border-radius:8px">
+          <option value="public">Public</option>
+          <option value="private">Private</option>
+        </select>
+        <button id="btn-create-room" class="btn btn-primary">Create</button>
+      </div>
+      <div id="create-room-status" style="margin-top:8px;color:var(--muted)"></div>
+    </section>
+
+    <section id="rooms-list-section">
+      <h3 id="rooms-list-heading">Public rooms</h3>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+        <input id="rooms-search" placeholder="Search rooms" style="padding:8px;border:1px solid #e6e9ef;border-radius:8px;flex:1;max-width:240px" />
+        <select id="rooms-visibility" style="padding:8px;border:1px solid #e6e9ef;border-radius:8px">
+          <option value="public">Public</option>
+          <option value="private">Private (mine)</option>
+          <option value="all">All (public + private where I'm a member)</option>
+        </select>
+        <select id="rooms-page-size" style="padding:8px;border:1px solid #e6e9ef;border-radius:8px">
+          <option value="10">10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+        </select>
+        <div id="rooms-pagination" style="display:flex;gap:8px;align-items:center"></div>
+      </div>
+      <div id="rooms-list" style="margin-top:8px"></div>
+    </section>
+
+    <section id="room-details" style="margin-top:28px;display:none;border-top:1px solid var(--muted);padding-top:16px">
+      <h3>Room details</h3>
+      <div id="room-details-content" style="display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start">
+        <div>
+          <div style="margin-bottom:8px">
+            <label style="font-weight:600">Name</label>
+            <div id="room-name" style="padding:8px;border:1px solid #e6e9ef;border-radius:6px;margin-top:6px">—</div>
+          </div>
+
+          <div style="margin-bottom:8px">
+            <label style="font-weight:600">Description</label>
+            <div id="room-description" style="padding:8px;border:1px solid #e6e9ef;border-radius:6px;margin-top:6px;min-height:48px">—</div>
+          </div>
+
+          <div style="margin-bottom:8px">
+            <label style="font-weight:600">Visibility</label>
+            <div id="room-visibility" style="padding:8px;border:1px solid #e6e9ef;border-radius:6px;margin-top:6px">—</div>
+          </div>
+
+          <div style="margin-bottom:8px">
+            <label style="font-weight:600">Owner</label>
+            <div id="room-owner" style="padding:8px;border:1px solid #e6e9ef;border-radius:6px;margin-top:6px">—</div>
+          </div>
+        </div>
+
+        <div>
+          <div style="margin-bottom:12px">
+            <label style="font-weight:600">Admins</label>
+            <ul id="room-admins" style="margin-top:6px;padding-left:18px;color:var(--muted)">
+              <!-- populated with <li>admin name</li> -->
+            </ul>
+          </div>
+
+          <div style="margin-bottom:12px">
+            <label style="font-weight:600">Members</label>
+            <ul id="room-members" style="margin-top:6px;padding-left:18px;color:var(--muted);max-height:160px;overflow:auto;border:1px solid #f3f5f8;padding:8px;border-radius:6px">
+              <!-- populated with <li>member name</li> -->
+            </ul>
+          </div>
+
+          <div>
+            <label style="font-weight:600">Banned users <span id="room-banned-count" style="font-weight:600;color:var(--muted);margin-left:8px">0</span></label>
+            <ul id="room-banned" style="margin-top:6px;padding-left:18px;color:var(--muted);max-height:160px;overflow:auto;border:1px solid #f3f5f8;padding:8px;border-radius:6px">
+              <!-- populated with <li>banned user</li> -->
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div id="room-details-actions" style="margin-top:12px;display:flex;gap:8px">
+        <button id="btn-join-room" class="btn">Join</button>
+        <button id="btn-leave-room" class="btn">Leave</button>
+        <button id="btn-manage-room" class="btn btn-secondary">Manage</button>
+      </div>
+    </section>
+  </main>
+
+  <div id="modal-root"></div>
+  <div id="toast-root" class="toast-container" aria-live="polite" role="status"></div>
+
+  <script src="/static/unread.js"></script>
+  <script src="/static/main.js"></script>
+  <script src="/static/app/lib/rooms.js"></script>
+</body>
+</html>
