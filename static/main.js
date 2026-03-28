@@ -1,4 +1,6 @@
 const BASE = location.origin;
+// presence poll interval (ms) — read from site config or default to 2000ms
+const __presencePollInterval = (window && window.SITE_CONFIG && window.SITE_CONFIG.presencePollMs) ? parseInt(window.SITE_CONFIG.presencePollMs, 10) : 2000;
 let token = null;
 let jti = null;
 let tabId = 'tab-' + Math.random().toString(36).slice(2,9);
@@ -114,7 +116,14 @@ if(!(window && typeof window.trapFocus === 'function')){
   function releaseFocusTrap(){ try{ if(_previouslyFocused && _previouslyFocused.focus) _previouslyFocused.focus(); }catch(e){} if(document && document.__focusHandler) document.removeEventListener('keydown', document.__focusHandler); }
   window.trapFocus = trapFocus; window.releaseFocusTrap = releaseFocusTrap;
 }
-  if(!document.getElementById('user-info')) return;
+  // If the shared header/user-info isn't present we normally skip bootstrapping
+  // (login/register pages). However, if a token is already available in
+  // window.appState (for example header injected later or script-set token),
+  // still attempt to bootstrap so presence/heartbeat will start.
+  if(!document.getElementById('user-info')){
+    if(!(window && window.appState && window.appState.token)) return;
+    // fall through to call init() below when token exists
+  }
   // if the login/register just redirected here, bootstrap from sessionStorage first
   try{
     const raw = sessionStorage.getItem('boot_user');
@@ -233,6 +242,7 @@ function onLogin(user){
   }catch(e){}
   try{ if(window && typeof window.startHeartbeat === 'function' && window.startHeartbeat !== startHeartbeat) window.startHeartbeat(); else startHeartbeat(); }catch(e){}
   try{ if(window && typeof window.startPresencePolling === 'function' && window.startPresencePolling !== startPresencePolling) window.startPresencePolling(user.id); else startPresencePolling(user.id); }catch(e){}
+  try{ if(window && typeof window.startActivityMonitoring === 'function') { window.startActivityMonitoring(); } }catch(e){}
 }
 
 async function fetchMeAndMaybeShowAdmin(){
@@ -248,13 +258,43 @@ async function fetchMeAndMaybeShowAdmin(){
 
 async function heartbeat(){
   try{ if(window && typeof window.heartbeat === 'function' && window.heartbeat !== heartbeat) return window.heartbeat(); }catch(e){}
-  if(!token || !jti) return;
-  try{ await fetch(BASE + '/presence/heartbeat', {method:'POST', headers:{'content-type':'application/json','Authorization':'Bearer ' + token}, body: JSON.stringify({tab_id: tabId, jti})}); }catch(e){}
+  // If we have a token + jti, include Authorization header. Otherwise
+  // attempt to send the cookie (credentials: 'include') so server can
+  // authenticate via HttpOnly cookie and use the jti fallback.
+  try{
+    const headers = {'content-type':'application/json'};
+    const payload = { tab_id: tabId };
+    const opts = { method: 'POST', headers, body: JSON.stringify(payload) };
+    if(token && jti){
+      headers['Authorization'] = 'Bearer ' + token;
+      payload.jti = jti;
+      opts.body = JSON.stringify(payload);
+    } else {
+      // send cookie to authenticate when token isn't available in JS
+      opts.credentials = 'include';
+    }
+    // Always send cookie credentials (helps when using HttpOnly session cookie)
+    try{ opts.credentials = 'include'; }catch(e){}
+    // Debug: log that heartbeat is being sent (no token values logged)
+    try{
+      console.debug('heartbeat sending', { keys: Object.keys(payload), willSendCredentials: !!opts.credentials, hasAuthHeader: !!headers['Authorization'] });
+    }catch(e){}
+    try{
+      const r = await fetch(BASE + '/presence/heartbeat', opts);
+      // Attempt to read response body for debugging (best-effort)
+      let body = null;
+      try{ body = await r.text(); }catch(e){ body = null; }
+      try{ console.debug('heartbeat response', { status: r.status, ok: r.ok, body }); }catch(e){}
+    }catch(err){ try{ console.warn('heartbeat fetch failed', err); }catch(e){} }
+  }catch(e){}
 }
 
-function startHeartbeat(){
-  try{ if(window && typeof window.startHeartbeat === 'function' && window.startHeartbeat !== startHeartbeat) return window.startHeartbeat(); }catch(e){}
-  heartbeat(); window._hb = setInterval(heartbeat, 20000);
+function startHeartbeat(tokenArg, jtiArg, tabIdArg){
+  try{ if(window && typeof window.startHeartbeat === 'function' && window.startHeartbeat !== startHeartbeat) return window.startHeartbeat(tokenArg, jtiArg, tabIdArg); }catch(e){}
+  // apply provided args to local variables used by main.js scope
+  try{ if(tokenArg) { token = tokenArg; try{ window.appState = window.appState || {}; window.appState.token = tokenArg; }catch(e){} } if(jtiArg) jti = jtiArg; if(tabIdArg) tabId = tabIdArg; }catch(e){}
+  // start with an immediate heartbeat and then run per configured interval
+  heartbeat(); window._hb = setInterval(heartbeat, __presencePollInterval);
 }
 
 let _presenceInterval = null;
@@ -266,12 +306,63 @@ function startPresencePolling(userId){
       const r = await fetch(BASE + '/presence/' + userId);
       if(r.status !== 200) return;
       const data = await r.json();
-      const el = document.getElementById('my-presence'); if(el) el.textContent = data.status || 'unknown';
+      const el = document.getElementById('my-presence');
       const dot = document.getElementById('my-presence-dot');
-      if(dot){ const status = (data.status || '').toLowerCase(); if(status === 'online') dot.style.background = 'green'; else if(status === 'afk') dot.style.background = 'orange'; else dot.style.background = 'gray'; }
+      try{
+        const raw = (data && data.status) ? String(data.status).trim() : '';
+        let display = '';
+        if(/^online$/i.test(raw)) display = 'online';
+        else if(/^afk$/i.test(raw)) display = 'AFK';
+        else if(/^offline$/i.test(raw)) display = 'offline';
+  else display = 'offline';
+        if(el) el.textContent = display;
+        if(dot){ const s = String(display).toLowerCase(); if(s === 'online') dot.style.background = 'green'; else if(s === 'afk') dot.style.background = 'orange'; else dot.style.background = 'gray'; }
+      }catch(e){ console.warn('render presence failed', e); }
     }catch(e){ console.warn('presence poll failed', e); }
   }
-  update(); if(_presenceInterval) clearInterval(_presenceInterval); _presenceInterval = setInterval(update, 10000);
+  update(); if(_presenceInterval) clearInterval(_presenceInterval); _presenceInterval = setInterval(update, __presencePollInterval);
+}
+
+// Activity monitoring: send an immediate heartbeat on light user activity
+// (mousemove, keydown, touchstart, click, visibilitychange) but throttle to
+// avoid spamming the server. This ensures tab_presence.last_active is kept
+// up-to-date when users interact or reload the page.
+let _activityHandlers = null;
+let _activityThrottleMs = 5000; // minimum ms between heartbeats from activity
+let _lastActivityAt = 0;
+
+function startActivityMonitoring(throttleMs){
+  try{ if(window && typeof window.startActivityMonitoring === 'function' && window.startActivityMonitoring !== startActivityMonitoring) return window.startActivityMonitoring(throttleMs); }catch(e){}
+  if(throttleMs && Number.isFinite(throttleMs)) _activityThrottleMs = throttleMs;
+  if(_activityHandlers) return; // already running
+  _lastActivityAt = 0;
+  const sendIfAllowed = function(){
+    try{
+      const now = Date.now();
+      if(now - _lastActivityAt > _activityThrottleMs){
+        _lastActivityAt = now;
+        try{ heartbeat(); }catch(e){}
+      }
+    }catch(e){}
+  };
+  const onVisibility = function(){ if(document.visibilityState === 'visible') sendIfAllowed(); };
+  _activityHandlers = { mousemove: sendIfAllowed, keydown: sendIfAllowed, touchstart: sendIfAllowed, click: sendIfAllowed, visibilitychange: onVisibility };
+  try{ window.addEventListener('mousemove', _activityHandlers.mousemove); }catch(e){}
+  try{ window.addEventListener('keydown', _activityHandlers.keydown); }catch(e){}
+  try{ window.addEventListener('touchstart', _activityHandlers.touchstart, {passive:true}); }catch(e){}
+  try{ window.addEventListener('click', _activityHandlers.click); }catch(e){}
+  try{ document.addEventListener('visibilitychange', _activityHandlers.visibilitychange); }catch(e){}
+}
+
+function stopActivityMonitoring(){
+  try{ if(window && typeof window.stopActivityMonitoring === 'function' && window.stopActivityMonitoring !== stopActivityMonitoring) return window.stopActivityMonitoring(); }catch(e){}
+  if(!_activityHandlers) return;
+  try{ window.removeEventListener('mousemove', _activityHandlers.mousemove); }catch(e){}
+  try{ window.removeEventListener('keydown', _activityHandlers.keydown); }catch(e){}
+  try{ window.removeEventListener('touchstart', _activityHandlers.touchstart); }catch(e){}
+  try{ window.removeEventListener('click', _activityHandlers.click); }catch(e){}
+  try{ document.removeEventListener('visibilitychange', _activityHandlers.visibilitychange); }catch(e){}
+  _activityHandlers = null;
 }
 
 // after login/register, fetch authoritative /me to decide admin visibility
@@ -373,6 +464,72 @@ async function loadIncomingRequests(){
 
 // ensure incoming requests refresher
 setInterval(()=>{ if(token) loadIncomingRequests() }, 15000);
+
+// Universal presence poller: every 60s, if we know the current user id,
+// fetch /presence/{user_id} and update the UI if presence elements exist.
+async function pollPresenceOnce(userId){
+  try{
+    if(!userId) return;
+    const r = await fetch(BASE + '/presence/' + userId);
+    if(r.status !== 200) return;
+    const data = await r.json();
+    const el = document.getElementById('my-presence');
+    const dot = document.getElementById('my-presence-dot');
+    try{
+      const raw = (data && data.status) ? String(data.status).trim() : '';
+      let display = '';
+      if(/^online$/i.test(raw)) display = 'online';
+      else if(/^afk$/i.test(raw)) display = 'AFK';
+      else if(/^offline$/i.test(raw)) display = 'offline';
+      else display = 'offline';
+      if(el) el.textContent = display;
+      if(dot){ const s = String(display).toLowerCase(); if(s === 'online') dot.style.background = 'green'; else if(s === 'afk') dot.style.background = 'orange'; else dot.style.background = 'gray'; }
+    }catch(e){ console.warn('pollPresenceOnce render failed', e); }
+  }catch(e){ /* ignore network errors */ }
+}
+// run periodically; call immediately if we already have a user restored
+// (uses __presencePollInterval declared at top)
+setInterval(()=>{
+  try{
+    const maybeUser = (window && window.appState && window.appState.user) || (sessionStorage.getItem('boot_user') ? JSON.parse(sessionStorage.getItem('boot_user')) : null);
+    if(maybeUser && maybeUser.id) pollPresenceOnce(maybeUser.id);
+  }catch(e){ /* ignore */ }
+}, __presencePollInterval);
+
+try{
+  const maybeUserNow = (window && window.appState && window.appState.user) || (sessionStorage.getItem('boot_user') ? JSON.parse(sessionStorage.getItem('boot_user')) : null);
+  if(maybeUserNow && maybeUserNow.id) pollPresenceOnce(maybeUserNow.id);
+}catch(e){}
+
+// Ensure presence polling runs on pages that may not have been fully bootstrapped.
+// Strategy (in order):
+// 1) use window.appState.user or sessionStorage.boot_user
+// 2) if we have a stored token (sessionStorage.boot_token) try GET /me with Authorization
+// 3) finally, attempt POST /refresh with credentials to bootstrap a session cookie
+async function ensurePresencePolling(){
+  try{
+    const existing = (window && window.appState && window.appState.user) || (sessionStorage.getItem('boot_user') ? JSON.parse(sessionStorage.getItem('boot_user')) : null);
+    if(existing && existing.id){ pollPresenceOnce(existing.id); return; }
+    // try /me using stored token
+    const storedToken = sessionStorage.getItem('boot_token') || (window && window.appState && window.appState.token);
+    if(storedToken){
+      try{
+        const r = await fetch(BASE + '/me', { headers: { 'Authorization': 'Bearer ' + storedToken } });
+        if(r.status === 200){ const d = await r.json(); if(d && d.user && d.user.id){ try{ window.appState = window.appState || {}; window.appState.user = d.user; }catch(e){} pollPresenceOnce(d.user.id); return; } }
+      }catch(e){}
+    }
+    // last resort: try /refresh with credentials to restore session (uses cookie)
+    try{
+      const r2 = await fetch(BASE + '/refresh', { method: 'POST', credentials: 'include' });
+      if(r2.status === 200){ const d2 = await r2.json(); if(d2 && d2.user && d2.user.id){ try{ window.appState = window.appState || {}; window.appState.user = d2.user; if(d2.token){ window.appState.token = d2.token; } }catch(e){} pollPresenceOnce(d2.user.id); return; } }
+    }catch(e){}
+  }catch(e){ /* swallow */ }
+}
+
+// Run once now to ensure presence polling is started even on pages without full bootstrapping
+ensurePresencePolling();
+// Retry discovery periodically in case session/bootstrap data is populated later
+setInterval(()=>{ try{ ensurePresencePolling(); }catch(e){} }, __presencePollInterval);
 
 // show admin button for admins (quick heuristic: fetch sessions and check for is_admin via /sessions is not sufficient; we show button and the server will enforce admin rights)
 function maybeShowAdmin(){

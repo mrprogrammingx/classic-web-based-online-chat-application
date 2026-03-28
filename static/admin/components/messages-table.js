@@ -30,7 +30,7 @@ export function createMessagesTable(messages, options = {}) {
     const numTd = document.createElement('td'); numTd.textContent = rowNum;
     const idTd = document.createElement('td'); idTd.textContent = m.id;
     const roomTd = document.createElement('td'); roomTd.textContent = m.room_name || m.room_id || '';
-    const authorTd = document.createElement('td'); authorTd.textContent = m.username || m.user_id || 'unknown';
+  const authorTd = document.createElement('td'); authorTd.textContent = m.username || m.user_id || '—';
     const textTd = document.createElement('td'); textTd.innerHTML = escapeHtml((m.text || '').slice(0, 200));
     const createdTd = document.createElement('td'); createdTd.textContent = m.created_at || '';
 
