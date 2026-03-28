@@ -1,7 +1,5 @@
 import aiosqlite
-
-# Path to sqlite DB file
-DB = 'auth.db'
+from core.config import DB_PATH as DB
 
 async def init_db():
     async with aiosqlite.connect(DB) as db:
