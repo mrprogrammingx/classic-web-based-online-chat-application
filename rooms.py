@@ -1,6 +1,7 @@
 from routers.rooms import router
 
 __all__ = ['router']
+print('DEBUG: top-level rooms.py imported, __file__=', __file__)
 from fastapi import APIRouter, Request, HTTPException, Depends
 import aiosqlite
 import time
@@ -488,20 +489,68 @@ async def list_room_messages(room_id: int, user=Depends(require_auth), limit: in
             if not await cur.fetchone():
                 raise HTTPException(status_code=403, detail='private room')
 
+        # Fetch messages and their attached file metadata in a single joined query to avoid
+        # an additional IN(...) lookup per request. Aggregate rows into messages with a 'files' array.
         if before is None:
-            cur = await db.execute('SELECT id, user_id, text, reply_to, created_at, edited_at FROM messages WHERE room_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?', (room_id, limit, offset))
+            q = '''
+            SELECT m.id, m.user_id, m.text, m.reply_to, m.created_at, m.edited_at,
+                   rf.id as file_id, rf.room_id as file_room_id, rf.path as file_path, rf.original_filename as file_name, rf.comment as file_comment, rf.created_at as file_created
+            FROM messages m
+            LEFT JOIN message_files mf ON mf.message_id = m.id
+            LEFT JOIN room_files rf ON rf.id = mf.room_file_id
+            WHERE m.room_id = ?
+            ORDER BY m.created_at ASC
+            LIMIT ? OFFSET ?
+            '''
+            cur = await db.execute(q, (room_id, limit, offset))
             rows = await cur.fetchall()
         else:
-            # fetch messages older than `before` timestamp in descending order then reverse to ascending
-            cur = await db.execute('SELECT id, user_id, text, reply_to, created_at, edited_at FROM messages WHERE room_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT ? OFFSET ?', (room_id, before, limit, offset))
+            q = '''
+            SELECT m.id, m.user_id, m.text, m.reply_to, m.created_at, m.edited_at,
+                   rf.id as file_id, rf.room_id as file_room_id, rf.path as file_path, rf.original_filename as file_name, rf.comment as file_comment, rf.created_at as file_created
+            FROM messages m
+            LEFT JOIN message_files mf ON mf.message_id = m.id
+            LEFT JOIN room_files rf ON rf.id = mf.room_file_id
+            WHERE m.room_id = ? AND m.created_at < ?
+            ORDER BY m.created_at DESC
+            LIMIT ? OFFSET ?
+            '''
+            cur = await db.execute(q, (room_id, before, limit, offset))
             rows_desc = await cur.fetchall()
             rows = list(reversed(rows_desc))
-        msgs = []
-        reply_ids = {r[3] for r in rows if r[3]}
-        # determine if the requester is owner or admin; admins may see previews of messages
+
+        msgs_map = {}
+        order = []
+        reply_ids = set()
+        for r in rows:
+            mid = r[0]
+            uid = r[1]
+            text = r[2]
+            reply_to = r[3]
+            created_at = r[4]
+            edited_at = r[5]
+            file_id = r[6]
+            file_room_id = r[7]
+            file_path = r[8]
+            file_name = r[9]
+            file_comment = r[10]
+            file_created = r[11]
+            if mid not in msgs_map:
+                msgs_map[mid] = {'id': mid, 'user_id': uid, 'text': text, 'reply_to': reply_to, 'reply': None, 'created_at': created_at, 'files': []}
+                if edited_at:
+                    msgs_map[mid]['edited_at'] = edited_at
+                order.append(mid)
+                if reply_to:
+                    reply_ids.add(reply_to)
+            if file_id is not None:
+                try:
+                    fo = {'id': file_id, 'room_id': file_room_id, 'path': file_path, 'original_filename': file_name, 'comment': file_comment, 'created_at': file_created, 'url': f"/rooms/{file_room_id}/files/{file_id}"}
+                    msgs_map[mid]['files'].append(fo)
+                except Exception:
+                    pass
+
         checker = _is_owner_or_admin(db, room_id, user['id'])
         is_admin = await checker()
-        # gather banned ids for this room to avoid leaking previews for banned users
         cur = await db.execute('SELECT banned_id FROM room_bans WHERE room_id = ?', (room_id,))
         banned_ids = {r[0] for r in await cur.fetchall()}
 
@@ -510,21 +559,70 @@ async def list_room_messages(room_id: int, user=Depends(require_auth), limit: in
             q = f"SELECT id, user_id, text, created_at FROM messages WHERE id IN ({','.join(['?']*len(reply_ids))})"
             cur = await db.execute(q, tuple(reply_ids))
             rrows = await cur.fetchall()
-            # only include reply previews if the referenced message's author is not banned,
-            # or the requester is an admin/owner (admins can see previews for moderation)
             for r in rrows:
-                mid, muid, mtext, mcreated = r
+                mid_r, muid, mtext, mcreated = r
                 if not is_admin and muid in banned_ids:
-                    # skip including preview to avoid leaking banned user's content
                     continue
-                reply_map[mid] = {'id': mid, 'user_id': muid, 'text': mtext, 'created_at': mcreated}
-        for r in rows:
-            mid, uid, text, reply_to, created_at, edited_at = r
-            reply_obj = reply_map.get(reply_to)
-            entry = {'id': mid, 'user_id': uid, 'text': text, 'reply_to': reply_to, 'reply': reply_obj, 'created_at': created_at}
-            if edited_at:
-                entry['edited_at'] = edited_at
-            msgs.append(entry)
+                reply_map[mid_r] = {'id': mid_r, 'user_id': muid, 'text': mtext, 'created_at': mcreated}
+
+        msgs = []
+        for mid in order:
+            m = msgs_map.get(mid)
+            if m:
+                if m.get('reply_to'):
+                    m['reply'] = reply_map.get(m['reply_to'])
+                msgs.append(m)
+
+        # Resolve display_name for message authors and reply authors
+        try:
+            user_ids = set()
+            for m in msgs:
+                if m.get('user_id'):
+                    user_ids.add(m['user_id'])
+                if m.get('reply') and m['reply'].get('user_id'):
+                    user_ids.add(m['reply']['user_id'])
+            if user_ids:
+                placeholders = ','.join(['?'] * len(user_ids))
+                q = f"SELECT id, username, email FROM users WHERE id IN ({placeholders})"
+                cur = await db.execute(q, tuple(user_ids))
+                urows = await cur.fetchall()
+                name_by_id = {}
+                for ur in urows:
+                    try:
+                        uid = ur[0]
+                        uname = ur[1] or ur[2] or (f'user{uid}')
+                        name_by_id[uid] = uname
+                    except Exception:
+                        pass
+                for m in msgs:
+                    try:
+                        if m.get('user_id') and m['user_id'] in name_by_id:
+                            m['display_name'] = name_by_id[m['user_id']]
+                        if m.get('reply') and m['reply'].get('user_id') and m['reply']['user_id'] in name_by_id:
+                            m['reply']['display_name'] = name_by_id[m['reply']['user_id']]
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # Attach any files uploaded for these messages. We look up message_files -> room_files
+        try:
+            msg_ids = [m['id'] for m in msgs]
+            if msg_ids:
+                q = f"SELECT mf.message_id, rf.id, rf.room_id, rf.path, rf.original_filename, rf.comment, rf.created_at FROM message_files mf JOIN room_files rf ON rf.id = mf.room_file_id WHERE mf.message_id IN ({','.join(['?']*len(msg_ids))})"
+                cur = await db.execute(q, tuple(msg_ids))
+                file_rows = await cur.fetchall()
+                files_by_msg = {}
+                for fr in file_rows:
+                    mid_fk, rf_id, rf_room_id, rf_path, rf_name, rf_comment, rf_created = fr
+                    file_obj = {'id': rf_id, 'room_id': rf_room_id, 'path': rf_path, 'original_filename': rf_name, 'comment': rf_comment, 'created_at': rf_created, 'url': f"/rooms/{rf_room_id}/files/{rf_id}"}
+                    files_by_msg.setdefault(mid_fk, []).append(file_obj)
+                for m in msgs:
+                    if m['id'] in files_by_msg:
+                        m['files'] = files_by_msg[m['id']]
+        except Exception:
+            # non-fatal: if attachment lookup fails, return messages without files
+            pass
 
         # mark as read: update memberships.last_read_at for this user/room to now
         try:
