@@ -3,6 +3,8 @@ import aiosqlite
 import time
 from db import DB
 from core.utils import require_auth
+import logging
+logging.getLogger(__name__).info('routers.rooms module loaded from %s', __file__)
 
 router = APIRouter()
 
@@ -35,24 +37,96 @@ async def create_room(request: Request, user=Depends(require_auth)):
 
 
 @router.get('/rooms')
-async def list_rooms(q: str = None, limit: int = 50, offset: int = 0):
+async def list_rooms(request: Request, q: str = None, limit: int = 50, offset: int = 0, visibility: str = 'public'):
     """List public rooms. Supports simple search via `q` (substring match on name or description).
 
     Returns each room with a `member_count` field.
     """
     async with aiosqlite.connect(DB) as db:
         params = []
-        where = "WHERE visibility = 'public'"
+
+        # We'll compute a WHERE clause based on requested visibility. By default
+        # list only public rooms. Clients may request `visibility=private` or
+        # `visibility=all`. Private rooms are only visible to authenticated
+        # members; anonymous requests will see no private rooms.
+        visibility = (visibility or 'public')
+        if visibility not in ('public', 'private', 'all'):
+            raise HTTPException(status_code=400, detail='visibility must be public, private, or all')
+
+    # Try to resolve an optional authenticated user from the request. We prefer
+        # returning is_member explicitly (false) for anonymous requests for
+        # predictable client behavior.
+        user = None
+        try:
+            auth = request.headers.get('authorization')
+            cookie_token = request.cookies.get('token')
+            token_val = None
+            if auth:
+                token_val = auth.replace('Bearer ', '')
+            elif cookie_token:
+                token_val = cookie_token
+            if token_val:
+                try:
+                    from core.utils import verify_token, session_exists
+                    data = verify_token(token_val)
+                    jti = data.get('jti')
+                    if jti and await session_exists(jti):
+                        user = data
+                except Exception:
+                    user = None
+        except Exception:
+            user = None
+
+        # After resolving user, construct the WHERE clause so we can safely
+        # include any user id parameters needed by the WHERE.
+
+        # build visibility-aware WHERE clause
+        where = ''
+        where_params = []
+        if visibility == 'public':
+            where = "WHERE visibility = 'public'"
+        elif visibility == 'private':
+            # only return private rooms the current user is a member of
+            if user and user.get('id'):
+                where = "WHERE visibility = 'private' AND EXISTS(SELECT 1 FROM memberships m3 WHERE m3.room_id = r.id AND m3.user_id = ?)"
+                where_params = [user.get('id')]
+            else:
+                # anonymous or unauthenticated: empty set
+                where = "WHERE 0"
+        else:  # visibility == 'all'
+            if user and user.get('id'):
+                # show public rooms and private rooms where the user is a member
+                where = "WHERE (visibility = 'public' OR (visibility = 'private' AND EXISTS(SELECT 1 FROM memberships m3 WHERE m3.room_id = r.id AND m3.user_id = ?)))"
+                where_params = [user.get('id')]
+            else:
+                where = "WHERE visibility = 'public'"
+
+        # apply q search if present
         if q:
             where += " AND (name LIKE ? OR description LIKE ?)"
             pattern = f"%{q}%"
-            params.extend([pattern, pattern])
-        # limit/offset for simple pagination
+            where_params.extend([pattern, pattern])
+
+        # we'll append limit/offset after any user params
+        # join memberships to compute member counts. Include an `is_member` column
+        # which is either 0 (anonymous/no membership) or computed via EXISTS.
+        if user and user.get('id'):
+            member_expr = "EXISTS(SELECT 1 FROM memberships m2 WHERE m2.room_id = r.id AND m2.user_id = ?) as is_member"
+            params_for_member = [user.get('id')]
+        else:
+            member_expr = "0 as is_member"
+            params_for_member = []
+
+        # final param ordering: where_params (may include user id and/or q patterns),
+        # then params_for_member (user id for is_member if present), then limit/offset
+        params = []
+        params.extend(where_params)
+        params.extend(params_for_member)
         params.extend([limit, offset])
-        # join memberships to compute member counts
+
         sql = f"""
         SELECT r.id, r.owner_id, r.name, r.description, r.visibility, r.created_at,
-               COUNT(m.id) as member_count
+               COUNT(m.id) as member_count, {member_expr}
         FROM rooms r
         LEFT JOIN memberships m ON m.room_id = r.id
         {where}
@@ -62,6 +136,15 @@ async def list_rooms(q: str = None, limit: int = 50, offset: int = 0):
         """
         cur = await db.execute(sql, params)
         rows = await cur.fetchall()
+        # compute total count matching the where clause (without limit/offset)
+        count_sql = f"SELECT COUNT(1) FROM rooms r {where}"
+        count_params = []
+        # where_params contains the q patterns (and possibly a user id) in order
+        if where_params:
+            count_params.extend(where_params)
+        cur2 = await db.execute(count_sql, count_params)
+        total_row = await cur2.fetchone()
+        total = total_row[0] if total_row else None
         rooms = [
             {
                 'id': r[0],
@@ -71,10 +154,50 @@ async def list_rooms(q: str = None, limit: int = 50, offset: int = 0):
                 'visibility': r[4],
                 'created_at': r[5],
                 'member_count': r[6],
+                'is_member': bool(r[7]) if len(r) > 7 else False,
             }
             for r in rows
         ]
-        return {'rooms': rooms}
+
+        # Enrich rooms with owner (rich object when available) and admins list/info
+        if rooms:
+            room_ids = [r['id'] for r in rooms]
+            placeholders = ','.join(['?'] * len(room_ids))
+            # fetch admin mappings for these rooms
+            cur = await db.execute(f'SELECT room_id, user_id FROM room_admins WHERE room_id IN ({placeholders})', tuple(room_ids))
+            admin_rows = await cur.fetchall()
+            admins_map = {}
+            admin_user_ids = set()
+            for ar in admin_rows:
+                rid, uid = ar[0], ar[1]
+                admins_map.setdefault(rid, []).append(uid)
+                admin_user_ids.add(uid)
+
+            # collect owner ids as well
+            owner_ids = set(r.get('owner_id') for r in rooms if r.get('owner_id'))
+            user_ids = set()
+            user_ids.update(owner_ids)
+            user_ids.update(admin_user_ids)
+
+            users_map = {}
+            if user_ids:
+                placeholders2 = ','.join(['?'] * len(user_ids))
+                q = f'SELECT id, username, email FROM users WHERE id IN ({placeholders2})'
+                cur = await db.execute(q, tuple(user_ids))
+                user_rows = await cur.fetchall()
+                for ur in user_rows:
+                    users_map[ur[0]] = {'id': ur[0], 'username': ur[1], 'email': ur[2]}
+
+            for rm in rooms:
+                rid = rm['id']
+                rm_admins = admins_map.get(rid, [])
+                rm['admins'] = rm_admins
+                rm['admins_info'] = [users_map.get(u) or {'id': u} for u in rm_admins]
+                rm_owner_obj = users_map.get(rm.get('owner_id')) if rm.get('owner_id') else None
+                rm['owner_obj'] = rm_owner_obj
+                rm['owner'] = rm_owner_obj or rm.get('owner_id')
+
+    return {'rooms': rooms, 'total': total}
 
 
 @router.get('/rooms/{room_id}')
@@ -95,15 +218,49 @@ async def get_room(room_id: int, user=Depends(require_auth)):
             m = await cur.fetchone()
             if not m:
                 raise HTTPException(status_code=403, detail='private room')
-        # list admins and members
+        # list admins and members (ids)
         cur = await db.execute('SELECT user_id FROM room_admins WHERE room_id = ?', (room_id,))
         admins = [r[0] for r in await cur.fetchall()]
         cur = await db.execute('SELECT user_id FROM memberships WHERE room_id = ?', (room_id,))
         members = [r[0] for r in await cur.fetchall()]
-        cur = await db.execute('SELECT banned_id FROM room_bans WHERE room_id = ?', (room_id,))
-        bans = [r[0] for r in await cur.fetchall()]
-        room.update({'admins': admins, 'members': members, 'bans': bans})
-        return {'room': room}
+        # fetch ban rows with banner information for richer detail
+        cur = await db.execute('SELECT banned_id, banner_id, created_at FROM room_bans WHERE room_id = ?', (room_id,))
+        ban_rows = await cur.fetchall()
+        bans = [r[0] for r in ban_rows]
+        bans_detail = [{'banned_id': r[0], 'banner_id': r[1], 'created_at': r[2]} for r in ban_rows]
+
+        # fetch user info for owner/admins/members/banned users to provide richer data
+        user_ids = set()
+        if room.get('owner_id'):
+            user_ids.add(room.get('owner_id'))
+        user_ids.update(admins)
+        user_ids.update(members)
+        user_ids.update(bans)
+        users_map = {}
+        if user_ids:
+            placeholders = ','.join(['?'] * len(user_ids))
+            q = f'SELECT id, username, email FROM users WHERE id IN ({placeholders})'
+            cur = await db.execute(q, tuple(user_ids))
+            rows = await cur.fetchall()
+            for r in rows:
+                users_map[r[0]] = { 'id': r[0], 'username': r[1], 'email': r[2] }
+
+        # keep backward-compatible id lists, and add richer objects
+    room.update({'admins': admins, 'members': members, 'bans': bans, 'bans_detail': bans_detail})
+    # richer owner object for convenience; keep owner_id for backward compatibility
+    room['owner_obj'] = users_map.get(room.get('owner_id')) if room.get('owner_id') else None
+    # set a friendly `owner` field to the richer owner object when available
+    room['owner'] = room['owner_obj'] or room.get('owner_id')
+    room['admins_info'] = [users_map.get(u) or {'id': u} for u in admins]
+    room['members_info'] = [users_map.get(u) or {'id': u} for u in members]
+    room['bans_info'] = [users_map.get(u) or {'id': u} for u in bans]
+    # provide a simple banned count to help clients avoid computing length
+    try:
+        room['banned_count'] = len(bans)
+    except Exception:
+        room['banned_count'] = 0
+        
+    return {'room': room}
 
 
 @router.post('/rooms/{room_id}/join')
@@ -120,9 +277,46 @@ async def join_room(room_id: int, user=Depends(require_auth)):
             raise HTTPException(status_code=403, detail='banned from room')
         if visibility == 'private':
             raise HTTPException(status_code=403, detail='private room')
-        await db.execute('INSERT OR IGNORE INTO memberships (room_id, user_id, created_at) VALUES (?, ?, ?)', (room_id, user['id'], int(time.time())))
-        await db.commit()
-        return {'ok': True}
+        # Avoid duplicate memberships: check first, then insert if absent. If
+        # historical duplicates exist (pre-index), remove them keeping the
+        # earliest entry to normalize the DB. This also serves as a defensive
+        # measure in case a race created more than one row.
+        cur = await db.execute('SELECT id FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
+        rows = await cur.fetchall()
+        if rows and len(rows) > 0:
+            # if there is at least one existing membership, delete any extras
+            if len(rows) > 1:
+                ids = [str(r[0]) for r in rows]
+                # delete all but the smallest id (earliest)
+                keep = min(int(r[0]) for r in rows)
+                await db.execute('DELETE FROM memberships WHERE room_id = ? AND user_id = ? AND id != ?', (room_id, user['id'], keep))
+                await db.commit()
+            return {'ok': True, 'already_member': True}
+        # insert a fresh membership
+        try:
+            await db.execute('INSERT INTO memberships (room_id, user_id, created_at) VALUES (?, ?, ?)', (room_id, user['id'], int(time.time())))
+            await db.commit()
+            # Defensive cleanup: ensure no historical duplicates remain for any reason
+            try:
+                await db.execute('DELETE FROM memberships WHERE id NOT IN (SELECT MIN(id) FROM memberships GROUP BY room_id, user_id)')
+                await db.commit()
+            except Exception:
+                pass
+        except Exception:
+            # In the unlikely event of a race leading to a unique constraint
+            # violation, clean up duplicates and treat as idempotent success.
+            try:
+                cur = await db.execute('SELECT id FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
+                rows2 = await cur.fetchall()
+                if rows2 and len(rows2) > 1:
+                    keep = min(int(r[0]) for r in rows2)
+                    await db.execute('DELETE FROM memberships WHERE room_id = ? AND user_id = ? AND id != ?', (room_id, user['id'], keep))
+                    await db.commit()
+                return {'ok': True, 'already_member': True}
+            except Exception:
+                # give up but return a generic success to avoid leaking DB errors
+                return {'ok': True, 'already_member': True}
+        return {'ok': True, 'already_member': False}
 
 
 @router.post('/rooms/{room_id}/leave')
@@ -724,16 +918,74 @@ async def list_room_messages(room_id: int, user=Depends(require_auth), limit: in
             if not await cur.fetchone():
                 raise HTTPException(status_code=403, detail='private room')
 
+        # Fetch messages and their attached file metadata in a single joined query to avoid
+        # an additional IN(...) lookup per request. This returns one row per message-file
+        # pair (or a single row with NULL file columns if no attachment); we'll aggregate
+        # in Python to build the messages list with a 'files' array.
         if before is None:
-            cur = await db.execute('SELECT id, user_id, text, reply_to, created_at, edited_at FROM messages WHERE room_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?', (room_id, limit, offset))
+            q = '''
+            SELECT m.id, m.user_id, m.text, m.reply_to, m.created_at, m.edited_at,
+                   rf.id as file_id, rf.room_id as file_room_id, rf.path as file_path, rf.original_filename as file_name, rf.comment as file_comment, rf.created_at as file_created
+            FROM messages m
+            LEFT JOIN message_files mf ON mf.message_id = m.id
+            LEFT JOIN room_files rf ON rf.id = mf.room_file_id
+            WHERE m.room_id = ?
+            ORDER BY m.created_at ASC
+            LIMIT ? OFFSET ?
+            '''
+            cur = await db.execute(q, (room_id, limit, offset))
             rows = await cur.fetchall()
         else:
-            # fetch messages older than `before` timestamp in descending order then reverse to ascending
-            cur = await db.execute('SELECT id, user_id, text, reply_to, created_at, edited_at FROM messages WHERE room_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT ? OFFSET ?', (room_id, before, limit, offset))
+            q = '''
+            SELECT m.id, m.user_id, m.text, m.reply_to, m.created_at, m.edited_at,
+                   rf.id as file_id, rf.room_id as file_room_id, rf.path as file_path, rf.original_filename as file_name, rf.comment as file_comment, rf.created_at as file_created
+            FROM messages m
+            LEFT JOIN message_files mf ON mf.message_id = m.id
+            LEFT JOIN room_files rf ON rf.id = mf.room_file_id
+            WHERE m.room_id = ? AND m.created_at < ?
+            ORDER BY m.created_at DESC
+            LIMIT ? OFFSET ?
+            '''
+            cur = await db.execute(q, (room_id, before, limit, offset))
             rows_desc = await cur.fetchall()
             rows = list(reversed(rows_desc))
-        msgs = []
-        reply_ids = {r[3] for r in rows if r[3]}
+
+        # aggregate rows into messages preserving order
+        logging.getLogger(__name__).info('list_room_messages: fetched %d rows from joined query', len(rows))
+        msgs_map = {}
+        order = []
+        reply_ids = set()
+        for r in rows:
+            mid = r[0]
+            uid = r[1]
+            text = r[2]
+            reply_to = r[3]
+            created_at = r[4]
+            edited_at = r[5]
+            file_id = r[6]
+            file_room_id = r[7]
+            file_path = r[8]
+            file_name = r[9]
+            file_comment = r[10]
+            file_created = r[11]
+            if mid not in msgs_map:
+                msgs_map[mid] = {'id': mid, 'user_id': uid, 'text': text, 'reply_to': reply_to, 'reply': None, 'created_at': created_at, 'files': []}
+                if edited_at:
+                    msgs_map[mid]['edited_at'] = edited_at
+                order.append(mid)
+                if reply_to:
+                    reply_ids.add(reply_to)
+            # append file metadata if present
+            if file_id is not None:
+                try:
+                    fo = {'id': file_id, 'room_id': file_room_id, 'path': file_path, 'original_filename': file_name, 'comment': file_comment, 'created_at': file_created, 'url': f"/rooms/{file_room_id}/files/{file_id}"}
+                    msgs_map[mid]['files'].append(fo)
+                except Exception:
+                    pass
+        # log how many messages had files attached
+        total_files_attached = sum(len(m['files']) for m in msgs_map.values())
+        logging.getLogger(__name__).info('list_room_messages: attached %d total files across %d messages', total_files_attached, len(msgs_map))
+
         # determine if the requester is owner or admin; admins may see previews of messages
         checker = _is_owner_or_admin(db, room_id, user['id'])
         is_admin = await checker()
@@ -741,31 +993,93 @@ async def list_room_messages(room_id: int, user=Depends(require_auth), limit: in
         cur = await db.execute('SELECT banned_id FROM room_bans WHERE room_id = ?', (room_id,))
         banned_ids = {r[0] for r in await cur.fetchall()}
 
+        # fetch reply preview objects for any replies referenced by the returned messages
         reply_map = {}
         if reply_ids:
             q = f"SELECT id, user_id, text, created_at FROM messages WHERE id IN ({','.join(['?']*len(reply_ids))})"
             cur = await db.execute(q, tuple(reply_ids))
             rrows = await cur.fetchall()
-            # only include reply previews if the referenced message's author is not banned,
-            # or the requester is an admin/owner (admins can see previews for moderation)
             for r in rrows:
-                mid, muid, mtext, mcreated = r
+                mid_r, muid, mtext, mcreated = r
                 if not is_admin and muid in banned_ids:
-                    # skip including preview to avoid leaking banned user's content
                     continue
-                reply_map[mid] = {'id': mid, 'user_id': muid, 'text': mtext, 'created_at': mcreated}
-        for r in rows:
-            mid, uid, text, reply_to, created_at, edited_at = r
-            reply_obj = reply_map.get(reply_to)
-            entry = {'id': mid, 'user_id': uid, 'text': text, 'reply_to': reply_to, 'reply': reply_obj, 'created_at': created_at}
-            if edited_at:
-                entry['edited_at'] = edited_at
-            msgs.append(entry)
+                reply_map[mid_r] = {'id': mid_r, 'user_id': muid, 'text': mtext, 'created_at': mcreated}
+
+        msgs = []
+        for mid in order:
+            m = msgs_map.get(mid)
+            if m:
+                # attach resolved reply object if any
+                if m.get('reply_to'):
+                    m['reply'] = reply_map.get(m['reply_to'])
+                msgs.append(m)
+
+        # Resolve a human-friendly display name for each referenced user id (messages + replies).
+        try:
+            user_ids = set()
+            for m in msgs:
+                if m.get('user_id'):
+                    user_ids.add(m['user_id'])
+                if m.get('reply') and m['reply'].get('user_id'):
+                    user_ids.add(m['reply']['user_id'])
+            if user_ids:
+                placeholders = ','.join(['?'] * len(user_ids))
+                q = f"SELECT id, username, email FROM users WHERE id IN ({placeholders})"
+                cur = await db.execute(q, tuple(user_ids))
+                urows = await cur.fetchall()
+                name_by_id = {}
+                for ur in urows:
+                    try:
+                        uid = ur[0]
+                        uname = ur[1] or ur[2] or (f'user{uid}')
+                        name_by_id[uid] = uname
+                    except Exception:
+                        pass
+                for m in msgs:
+                    try:
+                        if m.get('user_id') and m['user_id'] in name_by_id:
+                            m['display_name'] = name_by_id[m['user_id']]
+                        if m.get('reply') and m['reply'].get('user_id') and m['reply']['user_id'] in name_by_id:
+                            m['reply']['display_name'] = name_by_id[m['reply']['user_id']]
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # Fallback: ensure any files referenced by these messages are attached.
+        # Some SQLite builds or driver behaviors can produce surprises with JOINs;
+        # do a single IN(...) lookup to be robust (still a single query).
+        try:
+            msg_ids = [m['id'] for m in msgs]
+            if msg_ids:
+                q = f"SELECT mf.message_id, rf.id, rf.room_id, rf.path, rf.original_filename, rf.comment, rf.created_at FROM message_files mf JOIN room_files rf ON rf.id = mf.room_file_id WHERE mf.message_id IN ({','.join(['?']*len(msg_ids))})"
+                cur = await db.execute(q, tuple(msg_ids))
+                file_rows = await cur.fetchall()
+                files_by_msg = {}
+                for fr in file_rows:
+                    mid_fk, rf_id, rf_room_id, rf_path, rf_name, rf_comment, rf_created = fr
+                    file_obj = {'id': rf_id, 'room_id': rf_room_id, 'path': rf_path, 'original_filename': rf_name, 'comment': rf_comment, 'created_at': rf_created, 'url': f"/rooms/{rf_room_id}/files/{rf_id}"}
+                    files_by_msg.setdefault(mid_fk, []).append(file_obj)
+                for m in msgs:
+                    if m['id'] in files_by_msg:
+                        m['files'] = files_by_msg[m['id']]
+        except Exception:
+            # non-fatal: if attachment lookup fails, return messages without files
+            pass
 
         # mark as read: update memberships.last_read_at for this user/room to now
         try:
             await db.execute('UPDATE memberships SET last_read_at = ? WHERE room_id = ? AND user_id = ?', (int(time.time()), room_id, user['id']))
             await db.commit()
+        except Exception:
+            pass
+
+        # DEBUG: print rows and messages to server stdout for diagnosis (temporary)
+        try:
+            print('DEBUG JOIN_ROWS_COUNT:', len(rows))
+            # print per-message files count
+            for m in msgs:
+                print('DEBUG MSG:', m.get('id'), 'files_count=', len(m.get('files', [])))
         except Exception:
             pass
 
