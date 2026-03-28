@@ -88,6 +88,22 @@ async def check_ban(other_id: int, user=Depends(require_auth)):
     return {'banned': banned}
 
 
+@router.get('/bans')
+async def list_bans(user=Depends(require_auth)):
+    bans = await friends_service.list_bans_for_user(user['id'])
+    return {'banned': bans}
+
+
+@router.post('/unban')
+async def unban_user(request: Request, user=Depends(require_auth)):
+    body = await request.json()
+    bid = body.get('banned_id')
+    if not bid:
+        raise HTTPException(status_code=400, detail='banned_id required')
+    await friends_service.unban_user_action(user['id'], bid)
+    return {'ok': True}
+
+
 @router.post('/friends/remove')
 async def remove_friend(request: Request, user=Depends(require_auth)):
     body = await request.json()
