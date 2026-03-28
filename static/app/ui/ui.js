@@ -17,7 +17,20 @@
       const titleId = 'modal-title-' + Math.random().toString(36).slice(2,9);
       title.id = titleId;
       title.textContent = opts.title || 'Confirm';
-      const body = document.createElement('div'); body.className = 'modal-body'; body.innerHTML = `${escapeHtml(opts.body || '')}`;
+      const body = document.createElement('div'); body.className = 'modal-body';
+      // By default escape the body for safety. If caller passes opts.html = true
+      // we treat the body as trusted HTML and insert it as-is so interactive
+      // elements (inputs, buttons) become real DOM nodes the caller can query.
+      const bodyContent = (typeof opts.body === 'undefined') ? '' : opts.body;
+      try{
+        if(opts && opts.html){
+          if(typeof bodyContent === 'string') body.innerHTML = bodyContent;
+          else if(bodyContent && bodyContent.nodeType) body.appendChild(bodyContent);
+          else body.textContent = String(bodyContent || '');
+        } else {
+          body.innerHTML = escapeHtml(String(bodyContent || ''));
+        }
+      }catch(e){ body.innerHTML = escapeHtml(String(bodyContent || '')); }
       const actions = document.createElement('div'); actions.className = 'modal-actions';
       const cancel = document.createElement('button'); cancel.type='button'; cancel.textContent = opts.cancelText || 'Cancel';
       const confirm = document.createElement('button'); confirm.type='button'; confirm.textContent = opts.confirmText || 'OK'; confirm.className='confirm';
@@ -39,7 +52,14 @@
 
       cancel.addEventListener('click', ()=>{ cleanup(); resolve(false); });
       backdrop.addEventListener('click', (e)=>{ if(e.target === backdrop){ cleanup(); resolve(false); } });
-      confirm.addEventListener('click', ()=>{ cleanup(); resolve(true); });
+      confirm.addEventListener('click', ()=>{
+        // If the caller supplied a getResult function, call it now
+        // so it can capture any input values before the modal DOM is removed.
+        let result = true;
+        try{ if(opts && typeof opts.getResult === 'function'){ result = opts.getResult(); } }catch(e){ /* ignore result errors */ }
+        cleanup();
+        resolve(result);
+      });
 
       document.addEventListener('keydown', handleKey);
       setTimeout(()=>{ try{ confirm.focus(); }catch(e){} }, 0);
@@ -76,7 +96,20 @@
       const titleId = 'modal-title-' + Math.random().toString(36).slice(2,9);
       title.id = titleId;
       title.textContent = opts.title || 'Confirm';
-      const body = document.createElement('div'); body.className = 'modal-body'; body.innerHTML = `${escapeHtml(opts.body || '')}`;
+      const body = document.createElement('div'); body.className = 'modal-body';
+      // By default escape the body for safety. If caller passes opts.html = true
+      // we treat the body as trusted HTML and insert it as-is so interactive
+      // elements (inputs, buttons) become real DOM nodes the caller can query.
+      const bodyContent = (typeof opts.body === 'undefined') ? '' : opts.body;
+      try{
+        if(opts && opts.html){
+          if(typeof bodyContent === 'string') body.innerHTML = bodyContent;
+          else if(bodyContent && bodyContent.nodeType) body.appendChild(bodyContent);
+          else body.textContent = String(bodyContent || '');
+        } else {
+          body.innerHTML = escapeHtml(String(bodyContent || ''));
+        }
+      }catch(e){ body.innerHTML = escapeHtml(String(bodyContent || '')); }
       const actions = document.createElement('div'); actions.className = 'modal-actions';
       const cancel = document.createElement('button'); cancel.type='button'; cancel.textContent = opts.cancelText || 'Cancel';
       const confirm = document.createElement('button'); confirm.type='button'; confirm.textContent = opts.confirmText || 'OK'; confirm.className='confirm';
@@ -98,7 +131,14 @@
 
       cancel.addEventListener('click', ()=>{ cleanup(); resolve(false); });
       backdrop.addEventListener('click', (e)=>{ if(e.target === backdrop){ cleanup(); resolve(false); } });
-      confirm.addEventListener('click', ()=>{ cleanup(); resolve(true); });
+      confirm.addEventListener('click', ()=>{
+        // If the caller supplied a getResult function, call it now
+        // so it can capture any input values before the modal DOM is removed.
+        let result = true;
+        try{ if(opts && typeof opts.getResult === 'function'){ result = opts.getResult(); } }catch(e){ /* ignore result errors */ }
+        cleanup();
+        resolve(result);
+      });
 
       document.addEventListener('keydown', handleKey);
       setTimeout(()=>{ try{ confirm.focus(); }catch(e){} }, 0);

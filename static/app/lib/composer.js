@@ -55,7 +55,7 @@
           const json = JSON.parse(xhr.responseText);
           if(json && json.message){ const fullMsg = Object.assign({}, json.message); if(json.file) fullMsg.files = [json.file]; const el2 = window.appendMessage(fullMsg); try{ window.messagesEl.replaceChild(el2, placeholder); }catch(e){} try{ window.latestTimestamp = json.message.created_at || window.latestTimestamp; }catch(e){} }
         }catch(e){ console.error('parse response', e); }
-        try{ progressWrap.remove(); }catch(e){}
+  try{ progressWrap.remove(); }catch(e){}
         // refresh messages for sender to ensure UI is in sync
         try{ if(window.currentRoom && !window.isDialog) window.loadRoomMessages(window.currentRoom.id); else if(window.currentRoom && window.isDialog) window.loadDialogMessages(window.currentRoom.id); }catch(e){}
         // clear inputs (message and file) after successful send
@@ -66,6 +66,8 @@
             try{ fileEl2.value = ''; }catch(e){}
             try{ const clone = fileEl2.cloneNode(true); fileEl2.parentNode.replaceChild(clone, fileEl2); }catch(e){}
           }
+          // also clear attachments UI preview if present
+          try{ if(typeof window.clearSelectedFilePreview === 'function') window.clearSelectedFilePreview(); else { const sel = document.querySelector('.selected-file'); if(sel) sel.innerHTML = ''; } }catch(e){}
         }catch(e){}
       };
   xhr.onerror = function(){ window.showToast && window.showToast('Upload failed', 'error'); try{ progressWrap.remove(); }catch(e){} };
@@ -92,6 +94,8 @@
             }
           }catch(e){}
         }).catch(err=>{ console.error('send message failed', err); removePlaceholder(); });
+  // after successful JSON POST, clear preview UI
+  try{ if(typeof window.clearSelectedFilePreview === 'function') window.clearSelectedFilePreview(); else { const sel = document.querySelector('.selected-file'); if(sel) sel.innerHTML = ''; } }catch(e){}
     }
 
     // clear reply preview

@@ -28,6 +28,7 @@
   <p>Presence: <span id="my-presence-dot" class="presence-dot"></span><span id="my-presence">offline</span></p>
         <div style="margin-top:8px;display:flex;gap:8px">
           <button id="list-sessions" class="btn btn-secondary">List sessions</button>
+          <button id="change-password" class="btn btn-secondary">Change password</button>
           <button id="logout" class="btn btn-primary">Logout</button>
         </div>
         <div id="sessions" style="margin-top:8px"></div>
@@ -43,12 +44,15 @@
         </div>
         <div style="display:flex;gap:8px;margin-top:8px">
           <input id="friend-username-input" placeholder="friend username" />
+          <input id="friend-message-input" placeholder="message" value="hi" />
           <button id="request-by-username" class="btn">Send Request</button>
         </div>
         <h4 style="margin-top:12px">Incoming Requests</h4>
         <ul id="incoming-requests"></ul>
         <h4 style="margin-top:8px">Friends</h4>
         <ul id="friends-list"></ul>
+        <h4 style="margin-top:12px">Banned users</h4>
+        <ul id="banned-users"></ul>
       </section>
     </aside>
   </div>
@@ -59,5 +63,22 @@
 
   <script src="/static/unread.js"></script>
   <script src="/static/main.js"></script>
+  </body>
+    <script src="/static/app/lib/friends.js"></script>
+    <script>
+      // Force API calls to use the same origin (relative root) instead of
+      // relying on location.origin which can point to a different dev server/port.
+      window.API_BASE = '';
+    </script>
+    <script>
+      // Boot friends and contacts loaders on pages
+      // that include the contacts UI directly.
+      setTimeout(()=>{
+        try{ if(window && typeof window.loadFriends === 'function') window.loadFriends(); }catch(e){}
+        try{ if(window && typeof window.loadContacts === 'function') window.loadContacts(); }catch(e){}
+        try{ if(window && typeof window.loadBannedUsers === 'function') window.loadBannedUsers(); }catch(e){}
+      }, 100);
+    </script>
+    <script src="/static/app/ui/contacts-ui.js"></script>
 </body>
 </html>

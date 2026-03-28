@@ -116,7 +116,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   function openDialog(otherId){ try{ if(window && window.roomsApi && typeof window.roomsApi.selectRoom === 'function') return window.roomsApi.selectRoom({ id: otherId, other_id: otherId, is_dialog: true, name: null }); return selectRoom({ id: otherId, other_id: otherId, is_dialog: true, name: null }); }catch(e){} }
 
   function renderRooms(){ try{ if(window && window.roomsApi && typeof window.roomsApi.renderRooms === 'function') return window.roomsApi.renderRooms(); }catch(e){}
-    try{ if(!roomsList) return; roomsList.innerHTML = ''; (window.rooms||[]).forEach(r=>{ const li = document.createElement('li'); li.dataset.id = String(r.id); li.textContent = r.name || ('room'+r.id); li.addEventListener('click', ()=> selectRoom(r)); roomsList.appendChild(li); }); }catch(e){} }
+  try{ if(!roomsList) return; roomsList.innerHTML = ''; (window.rooms||[]).forEach(r=>{ const li = document.createElement('li'); try{ li.dataset.id = String(r.id); }catch(e){} li.textContent = r.name || ('room'+r.id); li.addEventListener('click', ()=> selectRoom(r)); roomsList.appendChild(li); }); }catch(e){} }
 
   function renderContacts(){ try{ if(window && window.roomsApi && typeof window.roomsApi.renderContacts === 'function') return window.roomsApi.renderContacts(); }catch(e){}
     try{ if(!contactsList) return; contactsList.innerHTML = ''; (window.contacts||[]).forEach(c=>{ const li = document.createElement('li'); li.dataset.id = String(c.id); li.textContent = c.name || ('user'+c.id); li.addEventListener('click', ()=> openDialog(c.id)); contactsList.appendChild(li); }); }catch(e){} }

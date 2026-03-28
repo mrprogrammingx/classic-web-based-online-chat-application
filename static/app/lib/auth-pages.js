@@ -43,5 +43,36 @@
     }catch(e){ console.warn('login failed', e) }
   }
 
-  try{ window.initAuthPages = setupAuthPageHelpers; window.register = register; window.login = login; }catch(e){}
+  async function requestReset(){
+    try{
+      const BASE = location.origin;
+      const email = document.getElementById('email').value;
+      const r = await fetch(BASE + '/password/reset-request', {method:'POST', credentials:'include', headers:{'content-type':'application/json'}, body: JSON.stringify({email})});
+      const data = await r.json();
+      const note = document.getElementById('reset-note');
+      if(r.status===200){
+        if(note) note.textContent = 'If an account exists, a reset link was issued.';
+        // In TEST_MODE the token may be returned; show it for convenience
+        if(data && data.token) try{ if(note) note.textContent += ' Token: ' + data.token; }catch(e){}
+      } else {
+        let msg = 'Request failed';
+        try{ msg = JSON.stringify(data); }catch(e){}
+        if(note) note.textContent = msg;
+      }
+    }catch(e){ console.warn('reset request failed', e); }
+  }
+
+  async function performReset(){
+    try{
+      const BASE = location.origin;
+      const token = document.getElementById('token').value;
+      const password = document.getElementById('password').value;
+      const r = await fetch(BASE + '/password/reset', {method:'POST', credentials:'include', headers:{'content-type':'application/json'}, body: JSON.stringify({token, password})});
+      const data = await r.json().catch(()=>null);
+      const note = document.getElementById('reset-note');
+  if(r.status===200){ if(note) note.textContent = 'Password updated. You can now login.'; } else { let msg = data || {error:'failed'}; try{ msg = JSON.stringify(msg); }catch(e){} if(note) note.textContent = msg; }
+    }catch(e){ console.warn('reset failed', e); }
+  }
+
+  try{ window.initAuthPages = setupAuthPageHelpers; window.register = register; window.login = login; window.requestReset = requestReset; window.performReset = performReset; }catch(e){}
 })();

@@ -8,7 +8,12 @@
       let user = null;
       try{ const raw = sessionStorage.getItem('boot_user'); if(raw) user = JSON.parse(raw); }catch(e){}
       if(!user){
-        try{ const r = await fetch('/me', { credentials: 'include' }); if(r && r.ok){ const j = await r.json().catch(()=>null); if(j && j.user) user = j.user; } }catch(e){}
+        try{
+          const headers = {};
+          try{ const t = (window && window.appState && window.appState.token) || (sessionStorage && sessionStorage.getItem && sessionStorage.getItem('boot_token')); if(t) headers['Authorization'] = 'Bearer ' + t; }catch(e){}
+          const r = await fetch('/me', { credentials: 'include', headers });
+          if(r && r.ok){ const j = await r.json().catch(()=>null); if(j && j.user) user = j.user; }
+        }catch(e){}
       }
       if(user && user.is_admin) {
         adminBtn.style.display = 'inline-flex';

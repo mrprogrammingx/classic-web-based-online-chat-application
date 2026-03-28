@@ -103,6 +103,32 @@ function renderUserInfo(user){
     const strong = document.createElement('strong'); strong.textContent = (user.username || user.email || ('user'+user.id));
     toggle.appendChild(avatar); toggle.appendChild(strong);
     dropdown.appendChild(toggle); ui.appendChild(dropdown);
+    // If the full sessions lib isn't loaded, clicking the minimal user-toggle
+    // should dynamically load it and open the sessions panel so users can
+    // access their sessions even when sessions.js wasn't preloaded.
+    try{
+      toggle.addEventListener && toggle.addEventListener('click', async ()=>{
+        try{
+          if(window && typeof window.loadSessions === 'function') return window.loadSessions();
+          // dynamically load sessions lib (with cache-bust) and call loadSessions
+          const s = document.createElement('script'); s.async = true; s.src = '/static/app/lib/sessions.js?_=' + Date.now();
+          s.onload = function(){ try{ 
+              // If the sessions lib provides renderUserInfo, call it with any
+              // available boot user so the richer panel DOM is created before
+              // we call loadSessions to populate the sessions list.
+              try{
+                const bootUser = (window && window.appState && window.appState.user) || (sessionStorage && sessionStorage.getItem && JSON.parse(sessionStorage.getItem('boot_user') || 'null'));
+                if(window && typeof window.renderUserInfo === 'function' && bootUser) try{ window.renderUserInfo(bootUser); }catch(e){}
+              }catch(e){}
+              if(window && typeof window.loadSessions === 'function') window.loadSessions(); 
+            }catch(e){ console.warn('sessions load failed', e); } };
+          s.onerror = function(){ console.warn('failed to load sessions.js'); };
+          document.head.appendChild(s);
+          // fallback call shortly after append in case onload isn't reliable in some test envs
+          setTimeout(()=>{ try{ if(window && typeof window.loadSessions === 'function') window.loadSessions(); }catch(e){} }, 250);
+        }catch(e){ console.warn('user-toggle click failed', e); }
+      });
+    }catch(e){}
   }catch(e){}
 }
 window.addEventListener('load', async ()=>{
@@ -197,11 +223,23 @@ async function login(){
 
 async function listSessions(){
   try{ if(window && typeof window.loadSessions === 'function') return window.loadSessions(); }catch(e){}
-  // If the sessions lib isn't present, attempt to dynamically load it (non-blocking)
+  // If the sessions lib isn't present, attempt to dynamically load it and
+  // call loadSessions when the script finishes loading. Use onload instead
+  // of a blind timeout for reliability.
   if(!(window && typeof window.loadSessions === 'function')){
-    const s = document.createElement('script'); s.src = '/static/app/lib/sessions.js'; s.async = true; document.head.appendChild(s);
-    // give the script a moment to load and then call the delegating function again
-    setTimeout(()=>{ try{ if(window && typeof window.loadSessions === 'function') window.loadSessions(); }catch(e){} }, 100);
+    try{ showStatus && showStatus('Loading session list...', true, 2000); }catch(e){}
+  const s = document.createElement('script');
+  // Cache-bust dynamic loader so development edits are picked up immediately.
+  // Always append a timestamp query param to ensure the browser fetches
+  // the latest file rather than using a cached copy.
+  const ts = Date.now();
+  s.src = '/static/app/lib/sessions.js?_=' + ts;
+    s.async = true;
+    s.onload = function(){ try{ if(window && typeof window.loadSessions === 'function') window.loadSessions(); }catch(err){ console.warn('sessions load failed', err); } };
+    s.onerror = function(){ try{ showStatus && showStatus('Failed to load session UI', true, 3000); }catch(e){}; console.warn('failed to load sessions.js'); };
+    document.head.appendChild(s);
+    // fallback: if onload doesn't fire for some reason, try after 250ms
+    setTimeout(()=>{ try{ if(window && typeof window.loadSessions === 'function') window.loadSessions(); }catch(e){} }, 250);
   }
 }
 
@@ -386,31 +424,50 @@ window.addEventListener('beforeunload', async ()=>{
   try{ if(window && typeof window.closePresence === 'function') { await window.closePresence(tabId, token); } else { await fetch(BASE + '/presence/close', {method:'POST', headers:{'content-type':'application/json','Authorization':'Bearer ' + token}, body: JSON.stringify({tab_id: tabId})}); } }catch(e){}
 });
 
-const regBtn = document.getElementById('register'); if(regBtn) regBtn.onclick = register;
-const loginBtn = document.getElementById('login'); if(loginBtn) loginBtn.onclick = login;
-const listBtn = document.getElementById('list-sessions'); if(listBtn) listBtn.onclick = listSessions;
-const addFriendBtn = document.getElementById('add-friend'); if(addFriendBtn) addFriendBtn.onclick = async ()=>{
-  const fid = parseInt(document.getElementById('friend-id-input').value || '0');
-  if(!fid) return showToast('enter numeric friend id', 'error');
+function attachPageHandlers(root=document){
   try{
-  addFriendBtn.disabled = true;
-  showStatus('Sending friend add...');
-  console.log('POST /friends/add', { friend_id: fid });
-  const r = await fetch(BASE + '/friends/add', {method:'POST', credentials: 'include', headers: authHeaders('application/json'), body: JSON.stringify({friend_id: fid})});
-  console.log('/friends/add response', r.status, await r.clone().text());
-  if(r.status===200) await loadFriends(); else { const body = await r.json().catch(()=>null); showStatus('Failed: ' + JSON.stringify(body)); showToast(JSON.stringify(body), 'error'); }
-  }catch(e){ showToast('failed to add friend', 'error') }
-  finally{ addFriendBtn.disabled = false }
+    const regBtn = root.getElementById && root.getElementById('register') || document.querySelector('#register');
+    if(regBtn) regBtn.onclick = register;
+  }catch(e){}
+  try{
+    const loginBtn = root.getElementById && root.getElementById('login') || document.querySelector('#login');
+    if(loginBtn) loginBtn.onclick = login;
+  }catch(e){}
+  try{
+    const listBtn = root.getElementById && root.getElementById('list-sessions') || document.querySelector('#list-sessions');
+    if(listBtn) listBtn.onclick = listSessions;
+  }catch(e){}
+  try{
+    const addFriendBtn = root.getElementById && root.getElementById('add-friend') || document.querySelector('#add-friend');
+    if(addFriendBtn) addFriendBtn.onclick = async ()=>{
+      const fid = parseInt(document.getElementById('friend-id-input').value || '0');
+      if(!fid) return showToast('enter numeric friend id', 'error');
+      try{
+        addFriendBtn.disabled = true;
+        showStatus('Sending friend add...');
+        console.log('POST /friends/add', { friend_id: fid });
+        const r = await fetch(BASE + '/friends/add', {method:'POST', credentials: 'include', headers: authHeaders('application/json'), body: JSON.stringify({friend_id: fid})});
+        console.log('/friends/add response', r.status, await r.clone().text());
+        if(r.status===200) await loadFriends(); else { const body = await r.json().catch(()=>null); showStatus('Failed: ' + JSON.stringify(body)); showToast(JSON.stringify(body), 'error'); }
+      }catch(e){ showToast('failed to add friend', 'error') }
+      finally{ addFriendBtn.disabled = false }
+    };
+  }catch(e){}
 }
+
+// Attach handlers now and again when header fragment loads (so header-injected pages work)
+try{ attachPageHandlers(); }catch(e){}
+try{ window.addEventListener && window.addEventListener('shared-header-loaded', function(){ attachPageHandlers(document); }); }catch(e){}
 
 const requestByUsernameBtn = document.getElementById('request-by-username'); if(requestByUsernameBtn) requestByUsernameBtn.onclick = async ()=>{
   const uname = document.getElementById('friend-username-input').value || '';
+  const msg = (document.getElementById('friend-message-input') && document.getElementById('friend-message-input').value) || 'hi';
   if(!uname) return showToast('enter username', 'error');
   try{
   requestByUsernameBtn.disabled = true;
   showStatus('Sending friend request...');
-  console.log('POST /friends/request', { username: uname });
-  const r = await fetch(BASE + '/friends/request', {method:'POST', credentials: 'include', headers: authHeaders('application/json'), body: JSON.stringify({username: uname, message: 'hi'})});
+  console.log('POST /friends/request', { username: uname, message: msg });
+  const r = await fetch(BASE + '/friends/request', {method:'POST', credentials: 'include', headers: authHeaders('application/json'), body: JSON.stringify({username: uname, message: msg})});
   console.log('/friends/request response', r.status, await r.clone().text());
   if(r.status === 200){ await loadIncomingRequests(); await loadFriends(); showStatus('Request sent'); showToast('request sent', 'success') } else { const body = await r.json().catch(()=>null); showStatus('Failed: ' + JSON.stringify(body)); showToast(JSON.stringify(body), 'error') }
   }catch(e){ showToast('failed to send request', 'error') }

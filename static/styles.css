@@ -32,6 +32,13 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 
 /* Admin action styling - more distinct outline/pill */
 .nav-actions #admin-open{padding:6px 12px;border-radius:999px;border:1px solid rgba(43,144,255,0.16);background:linear-gradient(180deg,rgba(255,255,255,0.6),rgba(255,255,255,0.36));color:var(--accent);font-weight:600;box-shadow:inset 0 -1px 0 rgba(255,255,255,0.6)}
+
+/* Rooms action buttons */
+.btn-join{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:10px;border:1px solid transparent;background:linear-gradient(90deg,#1f7fdc,#2aa0ff);color:#fff;font-weight:700;box-shadow:0 8px 24px rgba(43,144,255,0.12);transition:transform 160ms ease, box-shadow 160ms ease}
+.btn-join:hover{transform:translateY(-1px);box-shadow:0 14px 36px rgba(43,144,255,0.14)}
+.btn-leave{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:10px;border:1px solid rgba(197, 80, 34, 0.12);background:linear-gradient(180deg,#d34634,#b91010);color:#fff;font-weight:700;box-shadow:0 8px 24px rgba(185, 27, 16, 0.08);transition:transform 160ms ease, box-shadow 160ms ease}
+.btn-leave:hover{transform:translateY(-1px);box-shadow:0 14px 36px rgba(185, 30, 16, 0.12)}
+
 .nav-actions #admin-open:hover{background:var(--accent);color:#fff;border-color:transparent;box-shadow:0 8px 24px rgba(43,144,255,0.14);transform:translateY(-1px)}
 .nav-actions #admin-open:focus{outline:3px solid rgba(43,144,255,0.12);outline-offset:2px}
 
@@ -182,6 +189,27 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 .user-dropdown .sessions-list li button[disabled]{opacity:0.6;cursor:default}
 .user-dropdown .dropdown-panel .controls{display:flex;gap:8px;justify-content:space-between;margin-top:8px}
 .user-dropdown .dropdown-panel button{padding:8px 10px;border-radius:8px;border:1px solid #e6eef9;background:#fff;color:#0f1724}
+
+/* Right-side sessions list (home page) — mirrors dropdown styling but
+  optimized for a vertical rightbar panel. Applies when sessions.js
+  renders the list into the #sessions container on the home page. */
+#sessions{padding:8px;background:transparent}
+#sessions .sessions-list{list-style:none;padding:0;margin:0;max-height:520px;overflow:auto;border-top:1px solid #f3f6fb;padding-top:8px}
+#sessions .sessions-list li{display:flex;align-items:center;justify-content:space-between;padding:10px;border-radius:10px;background:#fff;border:1px solid #f3f6fb;margin-bottom:8px;box-shadow:0 6px 18px rgba(15,23,36,0.04)}
+#sessions .sessions-list li{display:flex;align-items:flex-start;justify-content:space-between;padding:12px;border-radius:10px;background:#fff;border:1px solid #f3f6fb;margin-bottom:10px;box-shadow:0 8px 24px rgba(15,23,36,0.04)}
+#sessions .sessions-list li .meta{font-size:13px;color:#24303a;margin-right:12px;flex:1;word-break:break-word;line-height:1.35;font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial}
+#sessions .sessions-list li .meta strong{font-weight:700;color:#0f1724}
+#sessions .sessions-list li .meta .time{display:block;color:var(--muted);font-size:12px;margin-top:6px}
+#sessions .sessions-list li button{padding:6px 10px;border-radius:8px;border:1px solid rgba(211,51,51,0.08);background:linear-gradient(180deg,#fff,#fff);color:#d33;font-size:13px;cursor:pointer;margin-left:8px;min-width:76px}
+#sessions .sessions-list li button:hover{background:#fff6f6;box-shadow:0 6px 18px rgba(211,51,51,0.04)}
+#sessions .sessions-list li button[disabled]{opacity:0.6;cursor:default}
+
+/* compact view when many sessions: slightly denser spacing */
+@media (max-width:900px){
+  #sessions .sessions-list li{padding:10px;border-radius:8px}
+  #sessions .sessions-list{max-height:420px}
+}
+
 
 /* unread total indicator in header */
 .nav-notifications{display:inline-flex;align-items:center;margin-right:8px;position:relative}

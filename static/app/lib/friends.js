@@ -1,12 +1,22 @@
 // Friends and incoming-requests helpers (extracted from main.js)
 (function(){
-  const BASE = location.origin;
+  // Use an explicit API base when provided (useful in tests/dev). Otherwise
+  // default to the relative root so requests go to the same server that
+  // served the page (avoids cross-port issues when opening files via a
+  // different dev server on another port).
+  const BASE = (typeof window !== 'undefined' && window.API_BASE) ? window.API_BASE : '';
 
   async function loadFriends(){
     try{
       const r = await fetch(BASE + '/friends', {credentials: 'include', headers: window.authHeaders ? window.authHeaders() : {}});
       if(r.status !== 200) return;
       const data = await r.json();
+      // Store globally so UI modules can read and render regardless of load order
+      try{ window.contacts = data.friends || []; }catch(e){}
+      // If a UI renderer is present (contacts-ui), prefer it to render the list
+      if(window && typeof window.renderFriendsList === 'function'){
+        try{ window.renderFriendsList(); return; }catch(e){ /* fall through to default rendering on error */ }
+      }
       const ul = document.getElementById('friends-list'); if(!ul) return;
       ul.innerHTML = '';
       for(const f of data.friends){
@@ -45,4 +55,22 @@
   }
 
   try{ window.loadFriends = loadFriends; window.loadIncomingRequests = loadIncomingRequests; }catch(e){}
+  
+  async function loadBannedUsers(){
+    try{
+      const r = await fetch(BASE + '/bans', {credentials: 'include', headers: window.authHeaders ? window.authHeaders() : {}});
+      if(r.status !== 200) return;
+      const data = await r.json();
+      const ul = document.getElementById('banned-users'); if(!ul) return;
+      ul.innerHTML = '';
+      for(const b of (data.banned || [])){
+        const li = document.createElement('li');
+        li.innerHTML = `${b.username || b.email || ('user'+b.banned_id)} <button data-id="${b.banned_id}" class="unban-btn">Unban</button>`;
+        const btn = li.querySelector('.unban-btn');
+        btn.onclick = async ()=>{ try{ btn.disabled = true; const r = await fetch(BASE + '/unban', {method:'POST', credentials:'include', headers: window.authHeaders ? window.authHeaders('application/json') : {'Content-Type':'application/json'}, body: JSON.stringify({banned_id: b.banned_id})}); if(r.status===200){ await loadBannedUsers(); window.showToast && window.showToast('Unbanned','success'); } else { const body = await r.json().catch(()=>null); window.showToast && window.showToast(JSON.stringify(body),'error'); } }catch(e){ window.showToast && window.showToast('failed to unban','error') } finally{ btn.disabled = false } }
+        ul.appendChild(li);
+      }
+    }catch(e){ console.warn('failed to load banned users', e) }
+  }
+  try{ window.loadBannedUsers = loadBannedUsers; }catch(e){}
 })();

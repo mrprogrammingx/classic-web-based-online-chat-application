@@ -4,6 +4,7 @@
     <div class="nav-left">
     <a href="#" class="btn btn-secondary" id="btn-home"><span class="nav-icon" aria-hidden="true"></span>Home</a>
     <a href="/static/chat/index.html" class="btn btn-secondary" id="btn-chat"><span class="nav-icon" aria-hidden="true"></span>Chat</a>
+    <a href="/static/rooms/index.html" class="btn btn-secondary" id="btn-rooms"><span class="nav-icon" aria-hidden="true"></span>Rooms</a>
   <a href="/static/admin/index.html" class="btn btn-secondary" id="btn-admin-link" style="display:none"><span class="nav-icon" aria-hidden="true"></span>Admin</a>
       <button id="btn-new-room" class="btn btn-primary">New Room</button>
     </div>
@@ -42,14 +43,21 @@
             adminEl.setAttribute('href', adminHref);
             adminEl.textContent = adminText;
           }
+          // set rooms link if present (can be overridden by SITE_CONFIG.roomsHref)
+          var roomsEl = document.getElementById('btn-rooms');
+          if(roomsEl){
+            var roomsHref = (window.SITE_CONFIG && window.SITE_CONFIG.roomsHref) ? window.SITE_CONFIG.roomsHref : '/static/rooms/index.html';
+            roomsEl.setAttribute('href', roomsHref);
+          }
         }catch(e){}
       };
       var setActive = function(){
         try{
           var path = (location && location.pathname) ? location.pathname : window.location.pathname;
-          var entries = [
+            var entries = [
             { id: 'btn-home', href: (window.SITE_CONFIG && window.SITE_CONFIG.homeHref) ? window.SITE_CONFIG.homeHref : '/static/home.html' },
             { id: 'btn-chat', href: (window.SITE_CONFIG && window.SITE_CONFIG.mainHref) ? window.SITE_CONFIG.mainHref : '/static/chat/index.html' },
+            { id: 'btn-rooms', href: (window.SITE_CONFIG && window.SITE_CONFIG.roomsHref) ? window.SITE_CONFIG.roomsHref : '/static/rooms/index.html' },
             { id: 'btn-admin-link', href: (window.SITE_CONFIG && window.SITE_CONFIG.adminHref) ? window.SITE_CONFIG.adminHref : '/static/admin/index.html' }
           ];
           entries.forEach(function(e){
