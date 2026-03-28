@@ -15,7 +15,7 @@ import time
 from passlib.context import CryptContext
 from pathlib import Path
 
-DB = Path(__file__).resolve().parents[1] / 'auth.db'
+from core.config import DB_PATH as DB
 pwd = CryptContext(schemes=['pbkdf2_sha256'], deprecated='auto')
 
 

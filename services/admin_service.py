@@ -94,3 +94,95 @@ async def unban_user(banned_id: int) -> None:
     async with aiosqlite.connect(db_pkg.DB) as conn:
         await conn.execute('DELETE FROM bans WHERE banned_id = ?', (banned_id,))
         await conn.commit()
+
+
+async def delete_room_and_cleanup(rid: int) -> Dict[str, int]:
+    """Delete a room and related objects. Returns counts of deleted rows for audit."""
+    async with aiosqlite.connect(db_pkg.DB) as conn:
+        cur = await conn.execute('SELECT COUNT(*) FROM messages WHERE room_id = ?', (rid,))
+        messages_before = (await cur.fetchone())[0]
+        cur = await conn.execute('SELECT COUNT(*) FROM message_files WHERE message_id IN (SELECT id FROM messages WHERE room_id = ?)', (rid,))
+        message_files_before = (await cur.fetchone())[0]
+        cur = await conn.execute('SELECT COUNT(*) FROM room_files WHERE room_id = ?', (rid,))
+        room_files_before = (await cur.fetchone())[0]
+        cur = await conn.execute('SELECT COUNT(*) FROM memberships WHERE room_id = ?', (rid,))
+        memberships_before = (await cur.fetchone())[0]
+        cur = await conn.execute('SELECT COUNT(*) FROM room_admins WHERE room_id = ?', (rid,))
+        room_admins_before = (await cur.fetchone())[0]
+        cur = await conn.execute('SELECT COUNT(*) FROM room_bans WHERE room_id = ?', (rid,))
+        room_bans_before = (await cur.fetchone())[0]
+        cur = await conn.execute('SELECT COUNT(*) FROM invitations WHERE room_id = ?', (rid,))
+        invitations_before = (await cur.fetchone())[0]
+
+        # perform deletions (DB-only)
+        await conn.execute('DELETE FROM message_files WHERE message_id IN (SELECT id FROM messages WHERE room_id = ?)', (rid,))
+        await conn.execute('DELETE FROM messages WHERE room_id = ?', (rid,))
+        await conn.execute('DELETE FROM room_files WHERE room_id = ?', (rid,))
+        await conn.execute('DELETE FROM memberships WHERE room_id = ?', (rid,))
+        await conn.execute('DELETE FROM room_admins WHERE room_id = ?', (rid,))
+        await conn.execute('DELETE FROM room_bans WHERE room_id = ?', (rid,))
+        await conn.execute('DELETE FROM invitations WHERE room_id = ?', (rid,))
+        await conn.execute('DELETE FROM rooms WHERE id = ?', (rid,))
+        await conn.commit()
+
+    return {
+        'messages': messages_before,
+        'message_files': message_files_before,
+        'room_files': room_files_before,
+        'memberships': memberships_before,
+        'room_admins': room_admins_before,
+        'room_bans': room_bans_before,
+        'invitations': invitations_before,
+        'room': 1,
+    }
+
+
+async def delete_message_and_cleanup(mid: int) -> Dict[str, int]:
+    """Delete a message and related files; returns counts for audit."""
+    async with aiosqlite.connect(db_pkg.DB) as conn:
+        # determine whether this id refers to a room message, a private message, or both
+        cur = await conn.execute('SELECT COUNT(*) FROM messages WHERE id = ?', (mid,))
+        messages_before = (await cur.fetchone())[0]
+        cur = await conn.execute('SELECT COUNT(*) FROM private_messages WHERE id = ?', (mid,))
+        private_before = (await cur.fetchone())[0]
+
+        # counts for audit
+        message_files_before = 0
+        private_message_files_before = 0
+        room_file_ids = []
+
+        if messages_before:
+            cur = await conn.execute('SELECT COUNT(*) FROM message_files WHERE message_id = ?', (mid,))
+            message_files_before = (await cur.fetchone())[0]
+            cur = await conn.execute('SELECT room_file_id FROM message_files WHERE message_id = ?', (mid,))
+            rf_rows = await cur.fetchall()
+            room_file_ids = [r[0] for r in rf_rows]
+
+        if private_before:
+            cur = await conn.execute('SELECT COUNT(*) FROM private_message_files WHERE message_id = ?', (mid,))
+            private_message_files_before = (await cur.fetchone())[0]
+
+        # delete rows for room message if present
+        room_files_deleted = 0
+        if messages_before:
+            await conn.execute('DELETE FROM message_files WHERE message_id = ?', (mid,))
+            await conn.execute('DELETE FROM messages WHERE id = ?', (mid,))
+            if room_file_ids:
+                q = 'DELETE FROM room_files WHERE id IN ({})'.format(','.join(['?'] * len(room_file_ids)))
+                await conn.execute(q, tuple(room_file_ids))
+                room_files_deleted = len(room_file_ids)
+
+        # delete rows for private messages if present
+        if private_before:
+            await conn.execute('DELETE FROM private_message_files WHERE message_id = ?', (mid,))
+            await conn.execute('DELETE FROM private_messages WHERE id = ?', (mid,))
+
+        await conn.commit()
+
+    return {
+        'messages': messages_before,
+        'private_messages': private_before,
+        'message_files': message_files_before,
+        'private_message_files': private_message_files_before,
+        'room_files': room_files_deleted,
+    }
