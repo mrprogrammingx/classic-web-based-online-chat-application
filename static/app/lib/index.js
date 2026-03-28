@@ -9,7 +9,11 @@
     { src: '/static/app/lib/auth-pages.js', skip: ()=> !!(window && (window.register || window.login || window.initAuthPages)) },
   // don't skip sessions.js just because a minimal renderUserInfo exists
   { src: '/static/app/lib/sessions.js', skip: ()=> !!(window && (window.loadSessions || window.initSessionsUi)) },
-    { src: '/static/app/lib/presence.js', skip: ()=> !!(window && (window.startPresencePolling || window.startHeartbeat || window.presence)) },
+  // Only skip injecting presence.js when the canonical `window.presence` object
+  // is already present. Some pages (main.js) define lightweight helpers like
+  // startHeartbeat which are not full implementations; we prefer the lib
+  // implementation when available.
+  { src: '/static/app/lib/presence.js', skip: ()=> !!(window && window.presence) },
     { src: '/static/app/lib/friends.js', skip: ()=> !!(window && (window.loadFriends || window.loadIncomingRequests)) },
     { src: '/static/app/lib/admin.js', skip: ()=> !!(window && window.openAdmin) },
     { src: '/static/app/lib/composer.js', skip: ()=> !!(window && window.handleComposerSubmit) }

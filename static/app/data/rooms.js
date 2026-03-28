@@ -1,5 +1,31 @@
 // Rooms and messages loaders (extracted)
 (function(){
+  // poller id for message refresh
+  let __messagePollId = null;
+  let __messagePollInFlight = false;
+  const MESSAGE_POLL_INTERVAL = 1000; // 1 second for quick delivery
+
+  function startMessagePoll(roomId){
+    try{
+      stopMessagePoll();
+      if(!roomId) return;
+      // trigger immediate fetch once
+      try{ if(window.currentRoom && String(window.currentRoom.id) === String(roomId)) { __messagePollInFlight = true; Promise.resolve().then(()=>loadRoomMessages(roomId)).finally(()=>{ __messagePollInFlight = false; }); } }catch(e){}
+      __messagePollId = setInterval(async ()=>{
+        try{
+          if(__messagePollInFlight) return; // skip if previous fetch still running
+          if(window.currentRoom && String(window.currentRoom.id) === String(roomId)){
+            __messagePollInFlight = true;
+            try{ await loadRoomMessages(roomId); }catch(e){}
+            __messagePollInFlight = false;
+          }
+        }catch(e){ __messagePollInFlight = false; }
+      }, MESSAGE_POLL_INTERVAL);
+    }catch(e){}
+  }
+
+  function stopMessagePoll(){ try{ if(__messagePollId) { clearInterval(__messagePollId); __messagePollId = null; __messagePollInFlight = false; } }catch(e){} }
+
   async function loadRooms(){
     const data = await window.fetchJSON('/rooms');
     if(data && data.rooms){ window.rooms = data.rooms; try{ if(typeof window.renderRooms === 'function') window.renderRooms(); }catch(e){} if(window.rooms && window.rooms.length && !(window.__TEST_SKIP_AUTOSELECT)) selectRoom(window.rooms[0]); }
@@ -108,6 +134,8 @@
         if(window.isDialog) loadDialogMessages(room.id);
         else loadRoomMessages(room.id);
       }catch(e){}
+      // start polling for new messages for this room
+      try{ startMessagePoll(room.id); }catch(e){}
       // mark active room item
       try{
         const roomsListEl = document.getElementById('rooms-list');
