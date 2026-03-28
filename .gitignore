@@ -240,3 +240,6 @@ test-results/
 # Re-include that specific path.
 !static/app/lib/
 !static/app/lib/**
+# test artifacts
+/test-artifacts/
+test-artifacts/
