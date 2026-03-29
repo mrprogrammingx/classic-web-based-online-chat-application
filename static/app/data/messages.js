@@ -75,6 +75,196 @@
         }
       }catch(e){}
       wrap.appendChild(meta); wrap.appendChild(body);
+      // actions container: Edit/Delete buttons (visible to appropriate users)
+      try{
+        const actions = document.createElement('div'); actions.className = 'msg-actions';
+        // only render when we have an id
+        if(m.id){
+          // Edit button: visible only to message author
+          if(window && window.__ME_ID && String(m.user_id) === String(window.__ME_ID)){
+            const editBtn = document.createElement('button'); editBtn.className = 'btn btn-link msg-edit'; editBtn.textContent = 'Edit';
+            editBtn.addEventListener('click', async (ev)=>{
+              try{
+                ev && ev.preventDefault && ev.preventDefault();
+                const curText = m.text || '';
+                // prefer modal if available
+                let newText = null;
+                if(window && typeof window.showModal === 'function'){
+                  // Capture existing textareas so we can detect the one the modal
+                  // inserts. Some modal implementations don't preserve the id or
+                  // insert inside containers, so diffing lists is more reliable.
+                  const beforeTextareas = Array.from(document.querySelectorAll('textarea'));
+
+                  // Open the modal but don't await it yet — this lets us run
+                  // code to find and populate the textarea before the user
+                  // interacts. Some modal implementations sanitize innerHTML
+                  // so setting the initial value proactively is necessary.
+                  const modalPromise = window.showModal({ title: 'Edit message', body: `<textarea style="width:100%" id="__edit_msg_input">${curText.replace(/</g,'&lt;')}</textarea>`, html: true, confirmText: 'Save', cancelText: 'Cancel' });
+
+                  // Poll briefly for the textarea that the modal inserted so
+                  // we can set its initial value (if empty) before the user types.
+                  let ta = null;
+                  const startOpen = Date.now();
+                  const openTimeoutMs = 1000;
+                  const intervalMs = 40;
+                  while((Date.now() - startOpen) < openTimeoutMs && !ta){
+                    await new Promise(r => setTimeout(r, intervalMs));
+                    try{
+                      const nowTextareas = Array.from(document.querySelectorAll('textarea'));
+                      ta = nowTextareas.find(t => beforeTextareas.indexOf(t) === -1) || null;
+                    }catch(e){ ta = null; }
+                  }
+                  // fallback if diff didn't find it
+                  if(!ta){
+                    ta = document.getElementById('__edit_msg_input') || (function(){ try{ return document.querySelector('textarea#__edit_msg_input, textarea.modal-input, #__modal textarea, textarea'); }catch(e){ return null; } })();
+                  }
+                  try{ console.debug && console.debug('message-edit: textarea before user', !!ta, ta && ta.value); }catch(e){}
+                  if(ta){
+                    try{
+                      if(!ta.value) {
+                        ta.value = curText;
+                        try{ console.debug && console.debug('message-edit: textarea set initial value', ta.value); }catch(e){}
+                      }
+                      // Install document-level capture listeners to record the
+                      // live value as the user types. This is robust against
+                      // DOM recreation because the handlers are on document.
+                      try{ window.__edit_modal_last_value = ta.value; }catch(e){}
+                      const captureHandler = (ev) => {
+                        try{
+                          const t = ev && ev.target;
+                          if(!t) return;
+                          const tag = (t.tagName || '').toLowerCase();
+                          let v = null;
+                          if(tag === 'textarea' || tag === 'input') v = t.value;
+                          else if(t.isContentEditable) v = t.textContent;
+                          else if(t.querySelector) {
+                            const inp = t.querySelector('textarea, input');
+                            if(inp) v = inp.value;
+                          }
+                          if(v !== null && v !== undefined) window.__edit_modal_last_value = v;
+                        }catch(e){}
+                      };
+                      document.addEventListener('input', captureHandler, true);
+                      document.addEventListener('keyup', captureHandler, true);
+                      // poll activeElement as a last resort
+                      const pollInterval = setInterval(()=>{
+                        try{
+                          const ae = document.activeElement;
+                          if(ae){ const tag = (ae.tagName||'').toLowerCase(); if(tag==='textarea' || tag==='input') window.__edit_modal_last_value = ae.value; else if(ae.isContentEditable) window.__edit_modal_last_value = ae.textContent; }
+                        }catch(e){}
+                      }, 80);
+                      try{ window.__edit_modal_last_value_cleanup = () => { try{ clearInterval(pollInterval); document.removeEventListener('input', captureHandler, true); document.removeEventListener('keyup', captureHandler, true); }catch(e){} }; }catch(e){}
+                    }catch(e){}
+                  }
+
+                  // Now wait for the modal to resolve (user interaction)
+                  const ok = await modalPromise;
+                  try{ console.debug && console.debug('message-edit: modal resolved', { ok }); }catch(e){}
+                  if(!ok) return;
+
+                  // Re-query the textarea after the modal confirmed, because
+                  // some implementations recreate the DOM on confirm. Read the
+                  // latest value so we get what the user actually typed.
+                  let finalTa = document.getElementById('__edit_msg_input');
+                  if(!finalTa){ try{ finalTa = document.querySelector('textarea#__edit_msg_input, textarea.modal-input, #__modal textarea, textarea'); }catch(e){ finalTa = null; } }
+                  // If the DOM was recreated, try to match by position: look for
+                  // a textarea that wasn't present before (again).
+                  if(!finalTa){
+                    try{
+                      const laterTextareas = Array.from(document.querySelectorAll('textarea'));
+                      finalTa = laterTextareas.find(t => beforeTextareas.indexOf(t) === -1) || null;
+                    }catch(e){ finalTa = null; }
+                  }
+                  // Prefer the live-stored value captured during user input. If
+                  // that's not available, fall back to robust DOM reads that
+                  // handle textarea/input/contenteditable cases.
+                  try{
+                    // try stored live value first
+                    let finalVal = null;
+                    try{ if(window && window.__edit_modal_last_value !== undefined) finalVal = window.__edit_modal_last_value; }catch(e){ finalVal = null; }
+                    // cleanup any polling/listeners
+                    try{ if(window && window.__edit_modal_last_value_cleanup) { window.__edit_modal_last_value_cleanup(); delete window.__edit_modal_last_value_cleanup; } }catch(e){}
+                    if(finalVal == null){
+                      const readEditable = (el) => {
+                        if(!el) return null;
+                        try{
+                          const tag = (el.tagName || '').toLowerCase();
+                          if(tag === 'textarea' || tag === 'input') return el.value || el.getAttribute('value') || null;
+                          if(el.isContentEditable) return el.textContent || el.innerText || null;
+                          const inp = el.querySelector && (el.querySelector('input, textarea'));
+                          if(inp) return inp.value || inp.getAttribute('value') || null;
+                          return el.value || (el.getAttribute && el.getAttribute('value')) || el.textContent || null;
+                        }catch(e){ return null; }
+                      };
+                      const finalRead = readEditable(finalTa);
+                      if(finalRead != null) finalVal = finalRead;
+                      else {
+                        try{
+                          const laterTextareas = Array.from(document.querySelectorAll('textarea'));
+                          const recreated = laterTextareas.find(t => beforeTextareas.indexOf(t) === -1) || null;
+                          const recreatedVal = readEditable(recreated);
+                          if(recreatedVal != null) finalVal = recreatedVal;
+                        }catch(e){}
+                      }
+                    }
+                    try{ console.debug && console.debug('message-edit: final value read', { finalVal }); }catch(e){}
+                    if(finalVal != null) newText = finalVal;
+                    try{ if(window && window.__edit_modal_last_value !== undefined) delete window.__edit_modal_last_value; }catch(e){}
+                  }catch(e){}
+                } else {
+                  newText = window.prompt('Edit message', curText);
+                }
+                if(newText == null) return;
+                // call edit endpoint
+                const payload = { text: newText };
+                // prefer explicit message.room_id, fall back to window.currentRoom.id or other heuristics
+                const roomIdUsed = (m && (m.room_id || m.room || m.roomId)) || (window && window.currentRoom && window.currentRoom.id) || undefined;
+                const endpoint = roomIdUsed ? `/rooms/${roomIdUsed}/messages/${m.id}/edit` : `/messages/${m.id}/edit`;
+                try{ console.debug && console.debug('message-edit: about to POST', endpoint, payload); }catch(e){}
+                const res = await window.fetchJSON(endpoint, { method: 'POST', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' } });
+                try{ console.debug && console.debug('message-edit: fetchJSON result', res); }catch(e){}
+                if(res && res.message){
+                  m.text = res.message.text || newText;
+                  if(body) body.textContent = m.text || '';
+                  window.showToast && window.showToast('Message edited','success');
+                } else {
+                  window.showToast && window.showToast('Failed to edit message','error');
+                }
+              }catch(e){ console.warn('edit action failed', e); window.showToast && window.showToast('Edit failed','error'); }
+            });
+            actions.appendChild(editBtn);
+          }
+          // Delete button: visible to author or room owner/admin (best-effort client-side)
+          try{
+            const canDeleteClient = (window && window.__ME_ID && String(m.user_id) === String(window.__ME_ID)) || (window && window.currentRoom && (String(window.currentRoom.owner) === String(window.__ME_ID) || (window.currentRoom.admins && Array.isArray(window.currentRoom.admins) && window.currentRoom.admins.indexOf(window.__ME_ID) !== -1)));
+            if(canDeleteClient){
+              const delBtn = document.createElement('button'); delBtn.className = 'btn btn-link msg-delete'; delBtn.textContent = 'Delete';
+              delBtn.addEventListener('click', async (ev)=>{
+                try{
+                  ev && ev.preventDefault && ev.preventDefault();
+                  let ok = true;
+                  try{ ok = await (window.showModal ? window.showModal({ title: 'Delete message', body: 'Delete this message? This cannot be undone.', confirmText: 'Delete', cancelText: 'Cancel' }) : Promise.resolve(window.confirm('Delete this message?'))); }catch(e){ ok = true; }
+                  if(!ok) return;
+                  // prefer explicit message.room_id, fall back to window.currentRoom.id
+                  const roomIdUsedDel = (m && (m.room_id || m.room || m.roomId)) || (window && window.currentRoom && window.currentRoom.id) || undefined;
+                  const delEndpoint = roomIdUsedDel ? `/rooms/${roomIdUsedDel}/messages/${m.id}` : `/messages/${m.id}`;
+                  try{ console.debug && console.debug('message-delete: about to DELETE', delEndpoint); }catch(e){}
+                  const r = await fetch(delEndpoint, { method: 'DELETE', credentials: 'include', headers: { 'Content-Type': 'application/json' } });
+                  try{ console.debug && console.debug('message-delete: delete response', r && r.status); }catch(e){}
+                  if(r && r.ok){
+                    try{ if(wrap && wrap.parentElement) wrap.parentElement.removeChild(wrap); }catch(e){}
+                    window.showToast && window.showToast('Message deleted','success');
+                  } else {
+                    window.showToast && window.showToast('Failed to delete message','error');
+                  }
+                }catch(e){ console.warn('delete action failed', e); window.showToast && window.showToast('Delete failed','error'); }
+              });
+              actions.appendChild(delBtn);
+            }
+          }catch(e){}
+        }
+        if(actions.childElementCount) wrap.appendChild(actions);
+      }catch(e){}
       try{ if(m.id) wrap.dataset.id = String(m.id); }catch(e){}
       return wrap;
     }catch(e){ console.warn('appendMessage failed', e); const r = document.createElement('div'); r.textContent = m && (m.text || JSON.stringify(m)) || ''; return r; }
