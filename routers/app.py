@@ -5,7 +5,8 @@ from fastapi.responses import FileResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.staticfiles import StaticFiles
 import aiosqlite
-from db import init_db, DB
+from db import init_db
+import db as db_mod
 import uuid
 from core.utils import (
     hash_pw,
@@ -141,7 +142,7 @@ async def register(request: Request):
     password = body.get('password')
     if not email or not username or not password:
         raise HTTPException(status_code=400, detail='email, username and password required')
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         try:
             await db.execute('INSERT INTO users (email, username, password, created_at) VALUES (?, ?, ?, ?)',
                              (email, username, hash_pw(password), int(time.time())))
@@ -169,7 +170,7 @@ async def login(request: Request):
     password = body.get('password')
     if not email or not password:
         raise HTTPException(status_code=400, detail='email and password required')
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         cur = await db.execute('SELECT id, email, username, password, is_admin FROM users WHERE email = ?', (email,))
         row = await cur.fetchone()
         if not row or not verify_pw(password, row[3]):
@@ -220,7 +221,7 @@ async def create_test_user(request: Request):
     password = body.get('password')
     if not email or not username or not password:
         raise HTTPException(status_code=400, detail='email, username and password required')
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         try:
             await db.execute('INSERT INTO users (email, username, password, created_at) VALUES (?, ?, ?, ?)',
                              (email, username, hash_pw(password), int(time.time())))
@@ -254,7 +255,7 @@ async def create_test_user(request: Request):
 async def me(request: Request, data=Depends(require_auth)):
     # return full user metadata for the current session
     user_id = data.get('id')
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         cur = await db.execute('SELECT id, email, username, is_admin FROM users WHERE id = ?', (user_id,))
         row = await cur.fetchone()
         if not row:
@@ -279,7 +280,7 @@ async def me_patch(request: Request, data=Depends(require_auth)):
 async def refresh(request: Request, data=Depends(require_auth)):
     # issue a fresh token (keeps behavior similar to login/register)
     user_id = data.get('id')
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         cur = await db.execute('SELECT id, email, username, is_admin FROM users WHERE id = ?', (user_id,))
         row = await cur.fetchone()
         if not row:
@@ -308,7 +309,7 @@ async def password_reset_request(request: Request):
     email = body.get('email')
     if not email:
         raise HTTPException(status_code=400, detail='email required')
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         cur = await db.execute('SELECT id FROM users WHERE email = ?', (email,))
         row = await cur.fetchone()
         if not row:
@@ -339,7 +340,7 @@ async def password_reset(request: Request):
     password = body.get('password')
     if not token or not password:
         raise HTTPException(status_code=400, detail='token and password required')
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         cur = await db.execute('SELECT user_id, expires_at FROM password_resets WHERE token = ?', (token,))
         row = await cur.fetchone()
         if not row:
@@ -368,7 +369,7 @@ async def change_own_password(request: Request, data=Depends(require_auth)):
     if not current or not newpw:
         raise HTTPException(status_code=400, detail='current_password and new_password required')
     user_id = data.get('id')
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         cur = await db.execute('SELECT password FROM users WHERE id = ?', (user_id,))
         row = await cur.fetchone()
         if not row or not verify_pw(current, row[0]):
@@ -387,7 +388,7 @@ async def delete_own_account(request: Request, data=Depends(require_auth)):
     """
     user_id = data.get('id')
     import os
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         # remove sessions explicitly
         try:
             await db.execute('DELETE FROM sessions WHERE user_id = ?', (user_id,))

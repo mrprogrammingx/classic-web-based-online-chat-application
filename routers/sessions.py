@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, HTTPException, Depends
 import aiosqlite
-from db import DB
+import db as db_mod
 from core.utils import require_auth, list_sessions_for_user, remove_session_by_jti
 
 router = APIRouter()
@@ -20,7 +20,7 @@ async def revoke_session(request: Request, data=Depends(require_auth)):
     if not jti:
         raise HTTPException(status_code=400, detail='jti required')
     # Ensure the session belongs to the user
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         cur = await db.execute('SELECT user_id FROM sessions WHERE jti = ?', (jti,))
         row = await cur.fetchone()
         if not row:

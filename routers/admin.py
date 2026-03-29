@@ -3,7 +3,8 @@ import os
 import aiosqlite
 import time
 from routers.utils import require_auth
-from db import DB
+import db as db_mod
+DB = db_mod.DB
 from services import admin_service
 
 router = APIRouter()

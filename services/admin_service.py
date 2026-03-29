@@ -26,7 +26,9 @@ async def list_users(filter_clause: Optional[str], q: Optional[str], page: int =
     where_clause = ('WHERE ' + ' AND '.join(where)) if where else ''
     offset = (page - 1) * per_page
 
-    async with aiosqlite.connect(db_pkg.DB) as conn:
+    # resolve DB path at call time using schema._db_path() so tests that
+    # set AUTH_DB_PATH or schema.DB are honored.
+    async with aiosqlite.connect(db_pkg.schema._db_path()) as conn:
         count_q = f"SELECT COUNT(*) FROM users {where_clause}"
         cur = await conn.execute(count_q, tuple(params))
         total_row = await cur.fetchone()
@@ -45,7 +47,7 @@ async def list_users(filter_clause: Optional[str], q: Optional[str], page: int =
 
 
 async def admin_user_counts() -> Dict[str, int]:
-    async with aiosqlite.connect(db_pkg.DB) as conn:
+    async with aiosqlite.connect(db_pkg.schema._db_path()) as conn:
         cur = await conn.execute('SELECT COUNT(*) FROM users')
         total = (await cur.fetchone())[0]
         cur = await conn.execute('SELECT COUNT(*) FROM users WHERE is_admin = 1')
@@ -56,7 +58,7 @@ async def admin_user_counts() -> Dict[str, int]:
 
 
 async def delete_user_and_cleanup(uid: int) -> None:
-    async with aiosqlite.connect(db_pkg.DB) as conn:
+    async with aiosqlite.connect(db_pkg.schema._db_path()) as conn:
         # remove related records similar to original admin.delete_user
         await conn.execute('DELETE FROM bans WHERE banner_id = ? OR banned_id = ?', (uid, uid))
         await conn.execute('DELETE FROM room_bans WHERE banned_id = ?', (uid,))
@@ -76,13 +78,13 @@ async def delete_user_and_cleanup(uid: int) -> None:
 
 
 async def set_admin(uid: int, is_admin: bool) -> None:
-    async with aiosqlite.connect(db_pkg.DB) as conn:
+    async with aiosqlite.connect(db_pkg.schema._db_path()) as conn:
         await conn.execute('UPDATE users SET is_admin = ? WHERE id = ?', (1 if is_admin else 0, uid))
         await conn.commit()
 
 
 async def ban_user(banner_id: int, banned_id: int) -> None:
-    async with aiosqlite.connect(db_pkg.DB) as conn:
+    async with aiosqlite.connect(db_pkg.schema._db_path()) as conn:
         try:
             await conn.execute('INSERT INTO bans (banner_id, banned_id, created_at) VALUES (?, ?, ?)', (banner_id, banned_id, int(time.time())))
             await conn.commit()
@@ -91,14 +93,14 @@ async def ban_user(banner_id: int, banned_id: int) -> None:
 
 
 async def unban_user(banned_id: int) -> None:
-    async with aiosqlite.connect(db_pkg.DB) as conn:
+    async with aiosqlite.connect(db_pkg.schema._db_path()) as conn:
         await conn.execute('DELETE FROM bans WHERE banned_id = ?', (banned_id,))
         await conn.commit()
 
 
 async def delete_room_and_cleanup(rid: int) -> Dict[str, int]:
     """Delete a room and related objects. Returns counts of deleted rows for audit."""
-    async with aiosqlite.connect(db_pkg.DB) as conn:
+    async with aiosqlite.connect(db_pkg.schema._db_path()) as conn:
         cur = await conn.execute('SELECT COUNT(*) FROM messages WHERE room_id = ?', (rid,))
         messages_before = (await cur.fetchone())[0]
         cur = await conn.execute('SELECT COUNT(*) FROM message_files WHERE message_id IN (SELECT id FROM messages WHERE room_id = ?)', (rid,))
@@ -139,7 +141,7 @@ async def delete_room_and_cleanup(rid: int) -> Dict[str, int]:
 
 async def delete_message_and_cleanup(mid: int) -> Dict[str, int]:
     """Delete a message and related files; returns counts for audit."""
-    async with aiosqlite.connect(db_pkg.DB) as conn:
+    async with aiosqlite.connect(db_pkg.schema._db_path()) as conn:
         # determine whether this id refers to a room message, a private message, or both
         cur = await conn.execute('SELECT COUNT(*) FROM messages WHERE id = ?', (mid,))
         messages_before = (await cur.fetchone())[0]

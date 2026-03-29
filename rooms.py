@@ -1,12 +1,12 @@
 from routers.rooms import router
 
 __all__ = ['router']
-print('DEBUG: top-level rooms.py imported, __file__=', __file__)
 from fastapi import APIRouter, Request, HTTPException, Depends
 import aiosqlite
 import time
-from db import DB
+import db as db_mod
 from core.utils import require_auth
+DB = db_mod.DB
 
 router = APIRouter()
 
@@ -21,7 +21,7 @@ async def create_room(request: Request, user=Depends(require_auth)):
         raise HTTPException(status_code=400, detail='room name required')
     if visibility not in ('public', 'private'):
         raise HTTPException(status_code=400, detail='visibility must be public or private')
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         try:
             await db.execute('INSERT INTO rooms (owner_id, name, description, visibility, created_at) VALUES (?, ?, ?, ?, ?)',
                              (user['id'], name, description, visibility, int(time.time())))
@@ -44,7 +44,7 @@ async def list_rooms(q: str = None, limit: int = 50, offset: int = 0):
 
     Returns each room with a `member_count` field.
     """
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         params = []
         where = "WHERE visibility = 'public'"
         if q:
@@ -83,7 +83,7 @@ async def list_rooms(q: str = None, limit: int = 50, offset: int = 0):
 
 @router.get('/rooms/{room_id}')
 async def get_room(room_id: int, user=Depends(require_auth)):
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         cur = await db.execute('SELECT id, owner_id, name, description, visibility, created_at FROM rooms WHERE id = ?', (room_id,))
         row = await cur.fetchone()
         if not row:

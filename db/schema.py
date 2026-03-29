@@ -1,11 +1,20 @@
 import aiosqlite
 import core.config as config
+import os
 
 
 def _db_path():
     # If tests or callers set module-level DB (e.g. `schema.DB = '/tmp/x'`),
     # prefer that. Otherwise fall back to core.config.DB_PATH which reads
     # AUTH_DB_PATH lazily.
+    global DB
+    # Prefer AUTH_DB_PATH environment override if set (tests often set
+    # this via monkeypatch.setenv). If not present, allow callers/tests
+    # to set module-level `schema.DB` to override the path. Finally fall
+    # back to the lazily-evaluated core.config.DB_PATH.
+    env_db = os.getenv('AUTH_DB_PATH')
+    if env_db:
+        return env_db
     global DB
     if 'DB' in globals() and DB:
         return DB

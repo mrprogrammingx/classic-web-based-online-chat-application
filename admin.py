@@ -97,7 +97,7 @@ async def list_rooms(request: Request, user=Depends(require_admin)):
     q = qs.get('q')
     offset = (page - 1) * per_page
 
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         # total count (respecting query if present)
         if q:
             if q.isdigit():

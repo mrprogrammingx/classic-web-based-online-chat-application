@@ -5,7 +5,7 @@ import time
 import os
 import uuid
 from typing import Optional
-from db import DB
+import db as db_mod
 from core.utils import require_auth
 
 router = APIRouter()
@@ -33,7 +33,7 @@ async def send_dialog_message(other_id: int, request: Request, user=Depends(requ
 
     msg = await _send_private_message(user['id'], other_id, text, reply_to)
     if msg.get('reply_to'):
-        async with aiosqlite.connect(DB) as db:
+        async with aiosqlite.connect(db_mod.DB) as db:
             cur = await db.execute('SELECT id, from_id, to_id, text, created_at FROM private_messages WHERE id = ?', (msg['reply_to'],))
             r = await cur.fetchone()
             if r:
@@ -42,7 +42,7 @@ async def send_dialog_message(other_id: int, request: Request, user=Depends(requ
 
 
 async def _send_private_message(from_id: int, to_id: int, text: str, reply_to: Optional[int]):
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         cur = await db.execute(
             'SELECT 1 FROM bans WHERE (banner_id = ? AND banned_id = ?) OR (banner_id = ? AND banned_id = ?)',
             (from_id, to_id, to_id, from_id)
@@ -88,7 +88,7 @@ async def send_message_compat(request: Request, user=Depends(require_auth)):
 
 @router.get('/dialogs/{other_id}/messages')
 async def dialog_history(other_id: int, user=Depends(require_auth), limit: int = 50, offset: int = 0, before: int = None):
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         cur = await db.execute(
             'SELECT 1 FROM bans WHERE (banner_id = ? AND banned_id = ?) OR (banner_id = ? AND banned_id = ?)',
             (user['id'], other_id, other_id, user['id'])
@@ -173,7 +173,7 @@ async def edit_dialog_message(other_id: int, message_id: int, request: Request, 
         raise HTTPException(status_code=400, detail='invalid text encoding')
     if size > 3 * 1024:
         raise HTTPException(status_code=400, detail='text too long (max 3KB)')
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         cur = await db.execute('SELECT from_id, to_id FROM private_messages WHERE id = ?', (message_id,))
         row = await cur.fetchone()
         if not row:
@@ -192,7 +192,7 @@ async def edit_dialog_message(other_id: int, message_id: int, request: Request, 
 
 @router.delete('/dialogs/{other_id}/messages/{message_id}')
 async def delete_dialog_message(other_id: int, message_id: int, user=Depends(require_auth)):
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         cur = await db.execute('SELECT from_id, to_id FROM private_messages WHERE id = ?', (message_id,))
         row = await cur.fetchone()
         if not row:
@@ -208,7 +208,7 @@ async def delete_dialog_message(other_id: int, message_id: int, user=Depends(req
 
 @router.get('/dialogs/{other_id}/files')
 async def dialog_files(other_id: int, user=Depends(require_auth)):
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         cur = await db.execute('SELECT 1 FROM users WHERE id = ?', (other_id,))
         if not await cur.fetchone():
             raise HTTPException(status_code=404, detail='user not found')
@@ -232,7 +232,7 @@ async def dialog_files(other_id: int, user=Depends(require_auth)):
 
 @router.get('/dialogs/{other_id}/files/{file_id}')
 async def get_dialog_file(other_id: int, file_id: int, user=Depends(require_auth)):
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         cur = await db.execute('SELECT path, from_id, to_id FROM private_message_files WHERE id = ?', (file_id,))
         row = await cur.fetchone()
         if not row:
@@ -270,7 +270,7 @@ async def get_dialog_file(other_id: int, file_id: int, user=Depends(require_auth
 async def upload_dialog_file(other_id: int, file: UploadFile = File(...), comment: Optional[str] = Form(None), message_id: Optional[int] = Form(None), user=Depends(require_auth)):
     if other_id == user['id']:
         raise HTTPException(status_code=400, detail="can't attach to yourself")
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         cur = await db.execute('SELECT 1 FROM bans WHERE (banner_id = ? AND banned_id = ?) OR (banner_id = ? AND banned_id = ?)', (user['id'], other_id, other_id, user['id']))
         if await cur.fetchone():
             raise HTTPException(status_code=403, detail='ban exists between users')
@@ -308,7 +308,7 @@ async def send_dialog_message_with_file(other_id: int, file: UploadFile = File(N
             raise HTTPException(status_code=400, detail='text too long (max 3KB)')
     msg = await _send_private_message(user['id'], other_id, text or '', reply_to)
     if msg.get('reply_to'):
-        async with aiosqlite.connect(DB) as db:
+        async with aiosqlite.connect(db_mod.DB) as db:
             cur = await db.execute('SELECT id, from_id, to_id, text, created_at FROM private_messages WHERE id = ?', (msg['reply_to'],))
             r = await cur.fetchone()
             if r:
@@ -322,7 +322,7 @@ async def send_dialog_message_with_file(other_id: int, file: UploadFile = File(N
         contents = await file.read()
         with open(dest_path, 'wb') as fh:
             fh.write(contents)
-        async with aiosqlite.connect(DB) as db:
+        async with aiosqlite.connect(db_mod.DB) as db:
             await db.execute('INSERT INTO private_message_files (message_id, from_id, to_id, path, original_filename, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', (msg['id'], user['id'], other_id, safe_name, file.filename, comment, int(time.time())))
             await db.commit()
             cur = await db.execute('SELECT id, message_id, from_id, to_id, path, original_filename, comment, created_at FROM private_message_files WHERE rowid = last_insert_rowid()')
@@ -353,7 +353,7 @@ async def paste_dialog_file(other_id: int, request: Request, user=Depends(requir
         raise HTTPException(status_code=400, detail='invalid base64 data')
     if other_id == user['id']:
         raise HTTPException(status_code=400, detail="can't attach to yourself")
-    async with aiosqlite.connect(DB) as db:
+    async with aiosqlite.connect(db_mod.DB) as db:
         cur = await db.execute('SELECT 1 FROM bans WHERE (banner_id = ? AND banned_id = ?) OR (banner_id = ? AND banned_id = ?)', (user['id'], other_id, other_id, user['id']))
         if await cur.fetchone():
             raise HTTPException(status_code=403, detail='ban exists between users')

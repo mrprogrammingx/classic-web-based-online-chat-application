@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Request, HTTPException, Depends
 import aiosqlite
 import time
-from db import DB
-from core.utils import require_auth
+import db as db_mod
+DB = db_mod.DB
+from core.utils import require_auth, get_presence_statuses
 import logging
 logging.getLogger(__name__).info('routers.rooms module loaded from %s', __file__)
 
@@ -117,16 +118,27 @@ async def list_rooms(request: Request, q: str = None, limit: int = 50, offset: i
             member_expr = "0 as is_member"
             params_for_member = []
 
-        # final param ordering: where_params (may include user id and/or q patterns),
-        # then params_for_member (user id for is_member if present), then limit/offset
+        if user and user.get('id'):
+            banned_expr = "EXISTS(SELECT 1 FROM room_bans rb WHERE rb.room_id = r.id AND rb.banned_id = ?) as is_banned"
+            params_for_banned = [user.get('id')]
+        else:
+            banned_expr = "0 as is_banned"
+            params_for_banned = []
+
+        # Correct param ordering must match the left-to-right position of every '?'
+        # across the ENTIRE statement (SELECT list is evaluated before WHERE).
+        # The SELECT list contains {member_expr} then {banned_expr} — each has one
+        # '?' for the user id — so those params come first. Then come the WHERE
+        # clause params (visibility user-id and/or q patterns), then limit/offset.
         params = []
-        params.extend(where_params)
-        params.extend(params_for_member)
+        params.extend(params_for_member)   # ? in SELECT: is_member subquery
+        params.extend(params_for_banned)   # ? in SELECT: is_banned subquery
+        params.extend(where_params)        # ? in WHERE:  visibility EXISTS + LIKE patterns
         params.extend([limit, offset])
 
         sql = f"""
         SELECT r.id, r.owner_id, r.name, r.description, r.visibility, r.created_at,
-               COUNT(m.id) as member_count, {member_expr}
+               COUNT(m.id) as member_count, {member_expr}, {banned_expr}
         FROM rooms r
         LEFT JOIN memberships m ON m.room_id = r.id
         {where}
@@ -155,6 +167,7 @@ async def list_rooms(request: Request, q: str = None, limit: int = 50, offset: i
                 'created_at': r[5],
                 'member_count': r[6],
                 'is_member': bool(r[7]) if len(r) > 7 else False,
+                'is_banned': bool(r[8]) if len(r) > 8 else False,
             }
             for r in rows
         ]
@@ -200,6 +213,138 @@ async def list_rooms(request: Request, q: str = None, limit: int = 50, offset: i
     return {'rooms': rooms, 'total': total}
 
 
+@router.get('/rooms/mine')
+async def list_my_rooms(user=Depends(require_auth)):
+    """Return all rooms the authenticated user is a member of."""
+    async with aiosqlite.connect(DB) as db:
+        sql = """
+        SELECT r.id, r.owner_id, r.name, r.description, r.visibility, r.created_at,
+               COUNT(m.id) as member_count
+        FROM rooms r
+        JOIN memberships mem ON mem.room_id = r.id AND mem.user_id = ?
+        LEFT JOIN memberships m ON m.room_id = r.id
+        GROUP BY r.id
+        ORDER BY r.created_at DESC
+        """
+        cur = await db.execute(sql, (user['id'],))
+        rows = await cur.fetchall()
+        rooms = [
+            {
+                'id': r[0],
+                'owner_id': r[1],
+                'name': r[2],
+                'description': r[3],
+                'visibility': r[4],
+                'created_at': r[5],
+                'member_count': r[6],
+                'is_member': True,
+            }
+            for r in rows
+        ]
+
+        # Enrich with admins and owner info
+        if rooms:
+            room_ids = [r['id'] for r in rooms]
+            placeholders = ','.join(['?'] * len(room_ids))
+            cur = await db.execute(f'SELECT room_id, user_id FROM room_admins WHERE room_id IN ({placeholders})', tuple(room_ids))
+            admin_rows = await cur.fetchall()
+            admins_map = {}
+            admin_user_ids = set()
+            for ar in admin_rows:
+                rid, uid = ar[0], ar[1]
+                admins_map.setdefault(rid, []).append(uid)
+                admin_user_ids.add(uid)
+
+            owner_ids = set(r.get('owner_id') for r in rooms if r.get('owner_id'))
+            all_user_ids = set()
+            all_user_ids.update(owner_ids)
+            all_user_ids.update(admin_user_ids)
+
+            users_map = {}
+            if all_user_ids:
+                placeholders2 = ','.join(['?'] * len(all_user_ids))
+                cur = await db.execute(f'SELECT id, username, email FROM users WHERE id IN ({placeholders2})', tuple(all_user_ids))
+                user_rows = await cur.fetchall()
+                for ur in user_rows:
+                    users_map[ur[0]] = {'id': ur[0], 'username': ur[1], 'email': ur[2]}
+
+            for rm in rooms:
+                rid = rm['id']
+                rm_admins = admins_map.get(rid, [])
+                rm['admins'] = rm_admins
+                rm['admins_info'] = [users_map.get(u) or {'id': u} for u in rm_admins]
+                rm_owner_obj = users_map.get(rm.get('owner_id')) if rm.get('owner_id') else None
+                rm['owner_obj'] = rm_owner_obj
+                rm['owner'] = rm_owner_obj or rm.get('owner_id')
+
+    return {'rooms': rooms}
+
+
+@router.get('/rooms/members-online')
+async def rooms_members_online(user=Depends(require_auth)):
+    """Return all rooms the user is a member of with each room's members and their online statuses."""
+    async with aiosqlite.connect(DB) as db:
+        # get rooms the user belongs to
+        cur = await db.execute(
+            'SELECT r.id, r.name FROM rooms r JOIN memberships mem ON mem.room_id = r.id AND mem.user_id = ? ORDER BY r.name',
+            (user['id'],)
+        )
+        room_rows = await cur.fetchall()
+        if not room_rows:
+            return {'rooms': []}
+
+        room_ids = [r[0] for r in room_rows]
+        room_names = {r[0]: r[1] for r in room_rows}
+
+        # get all members for these rooms
+        placeholders = ','.join(['?'] * len(room_ids))
+        cur = await db.execute(
+            f'SELECT room_id, user_id FROM memberships WHERE room_id IN ({placeholders})',
+            tuple(room_ids)
+        )
+        membership_rows = await cur.fetchall()
+
+        # collect all unique user ids
+        all_user_ids = set()
+        members_by_room = {}
+        for rid, uid in membership_rows:
+            all_user_ids.add(uid)
+            members_by_room.setdefault(rid, []).append(uid)
+
+        # fetch usernames
+        users_map = {}
+        if all_user_ids:
+            ph = ','.join(['?'] * len(all_user_ids))
+            cur = await db.execute(f'SELECT id, username, email FROM users WHERE id IN ({ph})', tuple(all_user_ids))
+            for ur in await cur.fetchall():
+                users_map[ur[0]] = ur[1] or ur[2] or f'user{ur[0]}'
+
+        # fetch presence statuses
+        statuses = await get_presence_statuses(list(all_user_ids)) if all_user_ids else {}
+
+        result = []
+        for rid in room_ids:
+            member_ids = members_by_room.get(rid, [])
+            members = []
+            for uid in member_ids:
+                members.append({
+                    'id': uid,
+                    'name': users_map.get(uid, f'user{uid}'),
+                    'online': statuses.get(str(uid), 'offline') == 'online',
+                    'status': statuses.get(str(uid), 'offline')
+                })
+            # sort: online first, then AFK, then offline, then by name
+            _status_order = {'online': 0, 'AFK': 1, 'offline': 2}
+            members.sort(key=lambda m: (_status_order.get(m['status'], 2), m['name'].lower()))
+            result.append({
+                'id': rid,
+                'name': room_names.get(rid, f'room{rid}'),
+                'members': members
+            })
+
+        return {'rooms': result}
+
+
 @router.get('/rooms/{room_id}')
 async def get_room(room_id: int, user=Depends(require_auth)):
     async with aiosqlite.connect(DB) as db:
@@ -208,10 +353,34 @@ async def get_room(room_id: int, user=Depends(require_auth)):
         if not row:
             raise HTTPException(status_code=404, detail='room not found')
         room = {'id': row[0], 'owner_id': row[1], 'name': row[2], 'description': row[3], 'visibility': row[4], 'created_at': row[5]}
-        # check ban
-        cur = await db.execute('SELECT id FROM room_bans WHERE room_id = ? AND banned_id = ?', (room_id, user['id']))
-        if await cur.fetchone():
-            raise HTTPException(status_code=403, detail='banned from room')
+        # check ban — return limited room info with is_banned flag so the UI can
+        # show a ban notice instead of a generic error page
+        cur = await db.execute('SELECT banner_id FROM room_bans WHERE room_id = ? AND banned_id = ?', (room_id, user['id']))
+        ban_row = await cur.fetchone()
+        if ban_row:
+            banner_id = ban_row[0]
+            banner_info = None
+            if banner_id:
+                cur2 = await db.execute('SELECT id, username, email FROM users WHERE id = ?', (banner_id,))
+                br = await cur2.fetchone()
+                if br:
+                    banner_info = {'id': br[0], 'username': br[1], 'email': br[2]}
+            return {'room': {
+                'id': room['id'],
+                'name': room['name'],
+                'description': room['description'],
+                'visibility': room['visibility'],
+                'owner_id': room['owner_id'],
+                'created_at': room['created_at'],
+                'is_banned': True,
+                'is_member': False,
+                'banned_by': banner_info,
+                'bans': [user['id']],
+                'bans_info': [{'id': user['id']}],
+                'admins': [], 'members': [], 'bans_detail': [],
+                'admins_info': [], 'members_info': [],
+                'banned_count': 1,
+            }}
         # check membership if private
         if room['visibility'] == 'private':
             cur = await db.execute('SELECT id FROM memberships WHERE room_id = ? AND user_id = ?', (room_id, user['id']))
@@ -259,7 +428,12 @@ async def get_room(room_id: int, user=Depends(require_auth)):
         room['banned_count'] = len(bans)
     except Exception:
         room['banned_count'] = 0
-        
+    # explicit membership/ban flags for the requesting user
+    room['is_banned'] = False
+    room['is_member'] = user['id'] in members
+    room['is_admin'] = user['id'] in admins
+    room['is_owner'] = (room.get('owner_id') == user['id'])
+
     return {'room': room}
 
 
@@ -841,6 +1015,32 @@ async def decline_invite(room_id: int, invite_id: int, user=Depends(require_auth
         return {'ok': True}
 
 
+@router.get('/invitations/mine')
+async def list_my_invitations(user=Depends(require_auth)):
+    """List all pending invitations for the authenticated user, enriched with room name."""
+    async with aiosqlite.connect(DB) as db:
+        cur = await db.execute(
+            'SELECT i.id, i.room_id, i.inviter_id, i.created_at, r.name, r.description '
+            'FROM invitations i '
+            'LEFT JOIN rooms r ON r.id = i.room_id '
+            'WHERE i.invitee_id = ?',
+            (user['id'],)
+        )
+        rows = await cur.fetchall()
+        invites = [
+            {
+                'id': r[0],
+                'room_id': r[1],
+                'inviter_id': r[2],
+                'created_at': r[3],
+                'room_name': r[4],
+                'room_description': r[5],
+            }
+            for r in rows
+        ]
+        return {'invites': invites}
+
+
 @router.post('/rooms/{room_id}/messages')
 async def post_room_message(room_id: int, request: Request, user=Depends(require_auth)):
     """Post a message to a room. Body: { text }
@@ -1115,3 +1315,22 @@ async def edit_room_message(room_id: int, message_id: int, request: Request, use
         r = await cur.fetchone()
         msg = {'id': r[0], 'room_id': r[1], 'user_id': r[2], 'text': r[3], 'reply_to': r[4], 'created_at': r[5], 'edited_at': r[6]}
         return {'message': msg}
+
+
+@router.post('/rooms/{room_id}/messages/clear')
+async def clear_room_messages(room_id: int, user=Depends(require_auth)):
+    """Owner or admin may remove all messages from a room."""
+    async with aiosqlite.connect(DB) as db:
+        checker = _is_owner_or_admin(db, room_id, user['id'])
+        if not await checker():
+            raise HTTPException(status_code=403, detail='not authorized')
+        # delete message_files mapping rows for messages in this room
+        try:
+            # delete message_files entries linked to messages in this room
+            await db.execute('DELETE FROM message_files WHERE message_id IN (SELECT id FROM messages WHERE room_id = ?)', (room_id,))
+            # delete messages
+            await db.execute('DELETE FROM messages WHERE room_id = ?', (room_id,))
+            await db.commit()
+        except Exception:
+            raise HTTPException(status_code=500, detail='failed to clear messages')
+        return {'ok': True}
