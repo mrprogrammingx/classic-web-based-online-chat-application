@@ -41,9 +41,10 @@
             if(dialogParam){ try{ window.__REQUESTED_DIALOG = dialogParam; }catch(e){} }
           }catch(e){}
           try{ if(window && typeof window.loadRooms === 'function') await window.loadRooms(); }catch(e){}
+      try{ if(window && typeof window.loadMyRooms === 'function') await window.loadMyRooms(); }catch(e){}
       try{ if(window && typeof window.loadContacts === 'function') await window.loadContacts(); }catch(e){}
-      // update unread notification badges
-      try{ if(typeof loadUnreadSummary === 'function') await loadUnreadSummary(); }catch(e){}
+      // start periodic unread notification badge polling
+      try{ if(typeof window.startUnreadPoll === 'function') window.startUnreadPoll(); else if(typeof loadUnreadSummary === 'function') await loadUnreadSummary(); }catch(e){}
     }catch(e){ console.warn('bootstrap failed', e); }
   }
 

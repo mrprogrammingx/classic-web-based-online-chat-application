@@ -14,8 +14,8 @@
       const panel = document.createElement('div'); panel.className = 'unread-panel';
       const title = document.createElement('h4'); title.textContent = 'Unread notifications';
       const list = document.createElement('ul');
-      rooms.forEach(rm => { const li = document.createElement('li'); li.innerHTML = `<span>${esc(rm.room_name||rm.room_id)}</span><strong>${Number(rm.unread_count)||0}</strong>`; list.appendChild(li); });
-      dialogs.forEach(d => { const li = document.createElement('li'); li.innerHTML = `<span>${esc(d.other_name||d.other_id)}</span><strong>${Number(d.unread_count)||0}</strong>`; list.appendChild(li); });
+      rooms.forEach(rm => { const li = document.createElement('li'); li.innerHTML = `<span>${esc(rm.room_name||rm.room_id)}</span><strong>${Number(rm.unread_count)||0}</strong>`; li.style.cursor='pointer'; li.addEventListener('click', ()=>{ cleanupPanel(); try{ location.href = '/static/chat/index.html?room=' + encodeURIComponent(rm.room_id); }catch(e){} }); list.appendChild(li); });
+      dialogs.forEach(d => { const li = document.createElement('li'); li.innerHTML = `<span>${esc(d.other_name||d.other_id)}</span><strong>${Number(d.unread_count)||0}</strong>`; li.style.cursor='pointer'; li.addEventListener('click', ()=>{ cleanupPanel(); try{ location.href = '/static/chat/index.html?dialog=' + encodeURIComponent(d.other_id); }catch(e){} }); list.appendChild(li); });
       if(!rooms.length && !dialogs.length){ const li = document.createElement('li'); li.textContent = 'No unread messages'; list.appendChild(li); }
       const actions = document.createElement('div'); actions.className = 'panel-actions';
       const openBtn = document.createElement('button'); openBtn.type='button'; openBtn.className='open-btn'; openBtn.textContent='Open notifications page';

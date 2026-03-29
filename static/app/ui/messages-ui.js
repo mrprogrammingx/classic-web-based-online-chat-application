@@ -29,10 +29,16 @@
 
       const obs = new MutationObserver(()=>{
         try{
-          updateUserNearBottom();
-          if(initialLoad || userNearBottom){
+          // Determine whether to scroll BEFORE reading the new scroll metrics.
+          // `userNearBottom` was set by the most recent scroll event (before the
+          // DOM mutation) so it reflects the user's intent accurately.
+          const shouldScroll = initialLoad || userNearBottom;
+          if(shouldScroll){
             messagesEl.scrollTop = messagesEl.scrollHeight;
           }
+          // Update the flag after scrolling so subsequent mutations use the
+          // correct baseline.
+          updateUserNearBottom();
         }catch(e){}
       });
       // start observing on next tick so immediate scroll events after init are captured

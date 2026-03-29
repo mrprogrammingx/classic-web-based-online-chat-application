@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
     // ...existing code ...
   })();
     const roomsList = document.getElementById('rooms-list');
+    const myRoomsList = document.getElementById('my-rooms-list');
     const contactsList = document.getElementById('contacts-list');
     const membersList = document.getElementById('members-list');
     const messagesEl = document.getElementById('messages');
@@ -24,6 +25,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
     const input = document.getElementById('message-input');
     const roomsSection = document.getElementById('rooms-section');
     const roomsToggle = document.getElementById('rooms-toggle');
+    const roomsSearchInput = document.getElementById('rooms-search-input');
     const unreadTotalBtn = document.getElementById('unread-total');
   let lastUnreadTotal = 0;
   // timestamp of the most recent local send action (ms since epoch)
@@ -115,14 +117,81 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
   function openDialog(otherId){ try{ if(window && window.roomsApi && typeof window.roomsApi.selectRoom === 'function') return window.roomsApi.selectRoom({ id: otherId, other_id: otherId, is_dialog: true, name: null }); return selectRoom({ id: otherId, other_id: otherId, is_dialog: true, name: null }); }catch(e){} }
 
-  function renderRooms(){ try{ if(window && window.roomsApi && typeof window.roomsApi.renderRooms === 'function') return window.roomsApi.renderRooms(); }catch(e){}
-  try{ if(!roomsList) return; roomsList.innerHTML = ''; (window.rooms||[]).forEach(r=>{ const li = document.createElement('li'); try{ li.dataset.id = String(r.id); }catch(e){} li.textContent = r.name || ('room'+r.id); li.addEventListener('click', ()=> selectRoom(r)); roomsList.appendChild(li); }); }catch(e){} }
+  // NOTE: do NOT delegate to window.roomsApi.renderRooms here — that is the rooms-index
+  // page renderer (lib/rooms.js) which fetches its own data and overwrites the chat sidebar
+  // with rooms-index UI (join/leave buttons etc.). On the chat page we always use the simple
+  // <li> list so that click → selectRoom works correctly.
+  function renderRooms(){
+    try{
+      if(!roomsList) return;
+      roomsList.innerHTML = '';
+      const list = window.__roomsSearchResults || window.rooms || [];
+      list.forEach(r=>{ const li = document.createElement('li'); try{ li.dataset.id = String(r.id); }catch(e){} li.textContent = r.name || ('room'+r.id); li.addEventListener('click', ()=> selectRoom(r)); roomsList.appendChild(li); });
+    }catch(e){}
+  }
+
+  function renderMyRooms(){
+    try{
+      if(!myRoomsList) return;
+      myRoomsList.innerHTML = '';
+      const myRooms = window.myRooms || [];
+      if(myRooms.length === 0){
+        const emptyLi = document.createElement('li');
+        emptyLi.className = 'empty-hint';
+        emptyLi.textContent = 'No rooms joined yet';
+        myRoomsList.appendChild(emptyLi);
+        return;
+      }
+      myRooms.forEach(r=>{
+        const li = document.createElement('li');
+        try{ li.dataset.id = String(r.id); }catch(e){}
+        li.textContent = r.name || ('room'+r.id);
+        li.addEventListener('click', ()=> selectRoom(r));
+        myRoomsList.appendChild(li);
+      });
+    }catch(e){}
+  }
+
+  // ── room search ────────────────────────────────────────────────────────
+  let _searchDebounce = null;
+  if(roomsSearchInput){
+    roomsSearchInput.addEventListener('input', ()=>{
+      try{
+        clearTimeout(_searchDebounce);
+        const query = (roomsSearchInput.value||'').trim();
+        if(!query){
+          // clear search — show full rooms list
+          window.__roomsSearchResults = null;
+          renderRooms();
+          return;
+        }
+        _searchDebounce = setTimeout(async ()=>{
+          try{
+            const data = await fetchJSON('/rooms?q=' + encodeURIComponent(query) + '&visibility=all&limit=50');
+            if(data && data.rooms){
+              window.__roomsSearchResults = data.rooms;
+              if(roomsList){
+                roomsList.innerHTML = '';
+                data.rooms.forEach(r=>{
+                  const li = document.createElement('li');
+                  try{ li.dataset.id = String(r.id); }catch(e){}
+                  li.textContent = r.name || ('room'+r.id);
+                  li.addEventListener('click', ()=> selectRoom(r));
+                  roomsList.appendChild(li);
+                });
+              }
+            }
+          }catch(e){}
+        }, 300);
+      }catch(e){}
+    });
+  }
 
   function renderContacts(){ try{ if(window && window.roomsApi && typeof window.roomsApi.renderContacts === 'function') return window.roomsApi.renderContacts(); }catch(e){}
     try{ if(!contactsList) return; contactsList.innerHTML = ''; (window.contacts||[]).forEach(c=>{ const li = document.createElement('li'); li.dataset.id = String(c.id); li.textContent = c.name || ('user'+c.id); li.addEventListener('click', ()=> openDialog(c.id)); contactsList.appendChild(li); }); }catch(e){} }
 
   function renderMembers(membersArr){ try{ if(window && window.roomsApi && typeof window.roomsApi.renderMembers === 'function') return window.roomsApi.renderMembers(membersArr); }catch(e){}
-    try{ if(!membersList) return; membersList.innerHTML = ''; (membersArr||[]).forEach(m=>{ const li = document.createElement('li'); li.textContent = `${m.name || m.id}${m.online ? ' (online)' : ''}`; membersList.appendChild(li); }); }catch(e){} }
+    try{ if(!membersList) return; membersList.innerHTML = ''; (membersArr||[]).forEach(m=>{ const li = document.createElement('li'); const st = (m.status || (m.online ? 'online' : 'offline')).toLowerCase(); const dot = document.createElement('span'); dot.className = 'online-dot ' + (st === 'online' ? 'online' : st === 'afk' ? 'afk' : 'offline'); li.appendChild(dot); const label = (m.name || m.id) + (st === 'afk' ? ' (AFK)' : st === 'online' ? ' (online)' : ''); li.appendChild(document.createTextNode(label)); membersList.appendChild(li); }); }catch(e){} }
 
   // delegate to centralized UI helpers (if the new ui.js is present it exposes window.showModal/window.showToast)
   function showModal(opts){
@@ -141,7 +210,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   // initAuthUi and initComposerUi are called during boot above (if present)
 
   // expose UI hooks for extracted modules (rooms.js expects these on window)
-  try{ window.selectRoom = selectRoom; window.openDialog = openDialog; window.renderRooms = renderRooms; window.renderContacts = renderContacts; window.renderMembers = renderMembers; }catch(e){}
+  try{ window.selectRoom = selectRoom; window.openDialog = openDialog; window.renderRooms = renderRooms; window.renderMyRooms = renderMyRooms; window.renderContacts = renderContacts; window.renderMembers = renderMembers; }catch(e){}
 
   roomsToggle.addEventListener('click', ()=>{
     roomsSection.classList.toggle('compacted');

@@ -20,7 +20,7 @@
     mainHref: '/static/chat/index.html',
     homeHref: '/static/home.html',
     adminHref: '/static/admin/index.html',
-    adminButtonText: 'Admin'
+    adminButtonText: 'Admin Access'
   };
 
   async function loadSiteConfig(timeoutMs = 300){

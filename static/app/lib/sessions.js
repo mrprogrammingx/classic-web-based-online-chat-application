@@ -36,25 +36,36 @@
           if(typeof opts.credentials === 'undefined') opts.credentials = 'include';
           opts.headers = opts.headers || {};
           const r = await fetch(url, opts);
-          if(!r.ok){ console.warn('fetch failed (fallback)', url, r.status); return null; }
-          return await r.json().catch(()=>null);
-        }catch(e){ console.warn('fetchJSON fallback failed', e); return null; }
+          if(!r.ok){ 
+            console.warn('fetch failed (fallback)', url, r.status, r.statusText);
+            throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+          }
+          const json = await r.json().catch((err)=>{
+            console.warn('JSON parse failed', err);
+            throw new Error('Invalid response format');
+          });
+          return json;
+        }catch(e){ 
+          console.warn('fetchJSON fallback failed', e);
+          throw e;
+        }
       };
 
       let data = null;
       try{
         data = await Promise.race([
           fetcher('/sessions'),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('fetch timeout')), timeoutMs))
+          new Promise((_, rej) => setTimeout(() => rej(new Error('Request timeout - server not responding')), timeoutMs))
         ]);
         console.debug && console.debug('data:', data);
       }catch(e){
         console.debug && console.debug('sessions: fetch error', e);
-        try{ sessionsList.innerHTML = '<li class="meta">Error loading sessions</li>'; }catch(_){ }
+        const errMsg = e.message || 'Failed to load sessions';
+        try{ sessionsList.innerHTML = `<li class="meta">Error: ${errMsg}</li>`; }catch(_){ }
         return;
       }
 
-      if(!data || !data.sessions) return sessionsList.innerHTML = '<li class="meta">No sessions</li>';
+      if(!data || !data.sessions) return sessionsList.innerHTML = '<li class="meta">No sessions found</li>';
       sessionsList.innerHTML = '';
       data.sessions.forEach(s => {
         const li = document.createElement('li');

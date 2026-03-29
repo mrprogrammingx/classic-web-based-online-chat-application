@@ -29,7 +29,6 @@
         <div style="margin-top:8px;display:flex;gap:8px">
           <button id="list-sessions" class="btn btn-secondary">List sessions</button>
           <button id="change-password" class="btn btn-secondary">Change password</button>
-          <button id="logout" class="btn btn-primary">Logout</button>
         </div>
         <div id="sessions" style="margin-top:8px"></div>
       </section>
@@ -37,15 +36,10 @@
       <section>
         <h3>Friends</h3>
         <div id="status" class="status-box hidden"></div>
-        <div class="mb-8"><button id="debug-inspect" class="btn small">Debug Inspect</button></div>
-        <div style="display:flex;gap:8px;margin-top:8px">
-          <input id="friend-id-input" placeholder="friend id" />
-          <button id="add-friend" class="btn">Add</button>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:8px">
-          <input id="friend-username-input" placeholder="friend username" />
-          <input id="friend-message-input" placeholder="message" value="hi" />
-          <button id="request-by-username" class="btn">Send Request</button>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+          <input id="friend-username-input" placeholder="Username to add" />
+          <textarea id="friend-message-input" placeholder="Message (optional)" style="resize:vertical;min-height:60px;padding:8px;border:1.5px solid #e0e7ff;border-radius:6px;font-size:13px;background:#fafbfc;color:#1e293b;font-family:inherit;transition:all 0.2s ease"></textarea>
+          <button id="request-by-username" class="btn btn-primary">Send Friend Request</button>
         </div>
         <h4 style="margin-top:12px">Incoming Requests</h4>
         <ul id="incoming-requests"></ul>
@@ -53,6 +47,11 @@
         <ul id="friends-list"></ul>
         <h4 style="margin-top:12px">Banned users</h4>
         <ul id="banned-users"></ul>
+      </section>
+
+      <section id="room-members-section">
+        <h3>Room Members</h3>
+        <div id="room-members-container"></div>
       </section>
     </aside>
   </div>
@@ -80,5 +79,54 @@
       }, 100);
     </script>
     <script src="/static/app/ui/contacts-ui.js"></script>
+    <script src="/static/app/ui/ui.js"></script>
+    <script>
+    // Load room members with online statuses for home page
+    (function(){
+      let _roomMembersPollId = null;
+      async function loadRoomMembersOnline(){
+        try{
+          const r = await fetch('/rooms/members-online', {credentials:'include'});
+          if(!r.ok) return;
+          const data = await r.json();
+          const container = document.getElementById('room-members-container');
+          if(!container || !data.rooms) return;
+          container.innerHTML = '';
+          if(data.rooms.length === 0){
+            container.innerHTML = '<p style="color:var(--muted);font-size:13px">Join a room to see members here.</p>';
+            return;
+          }
+          data.rooms.forEach(function(room){
+            const roomDiv = document.createElement('div');
+            roomDiv.className = 'room-members-group';
+            const title = document.createElement('h4');
+            title.className = 'room-members-title';
+            title.textContent = room.name;
+            roomDiv.appendChild(title);
+            const ul = document.createElement('ul');
+            ul.className = 'room-members-list';
+            room.members.forEach(function(m){
+              const li = document.createElement('li');
+              const dot = document.createElement('span');
+              const st = (m.status || (m.online ? 'online' : 'offline')).toLowerCase();
+              dot.className = 'presence-dot ' + (st === 'online' ? 'online' : st === 'afk' ? 'afk' : 'offline');
+              li.appendChild(dot);
+              const label = m.name + (st === 'afk' ? ' (AFK)' : '');
+              li.appendChild(document.createTextNode(label));
+              ul.appendChild(li);
+            });
+            roomDiv.appendChild(ul);
+            container.appendChild(roomDiv);
+          });
+        }catch(e){}
+      }
+      // initial load after auth bootstrap (delay to let session init)
+      setTimeout(loadRoomMembersOnline, 500);
+      // poll every 2 seconds (same as current user presence, for consistency)
+      const pollInterval = (window && window.SITE_CONFIG && window.SITE_CONFIG.presencePollMs) ? parseInt(window.SITE_CONFIG.presencePollMs, 10) : 2000;
+      _roomMembersPollId = setInterval(loadRoomMembersOnline, pollInterval);
+      window._loadRoomMembersOnline = loadRoomMembersOnline;
+    })();
+    </script>
 </body>
 </html>

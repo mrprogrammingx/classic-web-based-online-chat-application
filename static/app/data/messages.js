@@ -41,6 +41,15 @@
         }catch(e){}
       }
       meta.appendChild(document.createTextNode(' ')); meta.appendChild(time);
+      // show an "edited" indicator when the message has been edited
+      try{
+        if(m && (m.edited_at || m.edited)){
+          const editedSpan = document.createElement('span');
+          editedSpan.className = 'edited';
+          editedSpan.textContent = ' (edited)';
+          meta.appendChild(editedSpan);
+        }
+      }catch(e){}
       const body = document.createElement('div'); body.className = 'body';
       // if this message has a reply preview object, render it above the body
       if(m.reply){
@@ -225,7 +234,42 @@
                 try{ console.debug && console.debug('message-edit: fetchJSON result', res); }catch(e){}
                 if(res && res.message){
                   m.text = res.message.text || newText;
-                  if(body) body.textContent = m.text || '';
+                  // server may return edited_at; set it locally as a fallback
+                  m.edited_at = res.message.edited_at || (new Date()).toISOString();
+
+                  // ── Update the live DOM node ───────────────────────────────
+                  // Find the message element in the *current* DOM via data-id so
+                  // we update the correct node even if the poller has rebuilt the
+                  // list since appendMessage was called (which orphans the
+                  // closed-over `body` / `wrap` references).
+                  try{
+                    const messagesContainer = (window.messagesEl) || document.getElementById('messages');
+                    const liveWrap = (messagesContainer && m.id)
+                      ? messagesContainer.querySelector('[data-id="' + String(m.id) + '"]')
+                      : null;
+                    const targetWrap = (liveWrap && liveWrap.isConnected) ? liveWrap
+                      : ((wrap && wrap.isConnected) ? wrap : null);
+                    if(targetWrap){
+                      // update text
+                      const bodyEl = targetWrap.querySelector('.body');
+                      if(bodyEl) bodyEl.textContent = m.text || '';
+                      // add or refresh "(edited)" indicator in .meta
+                      const metaEl = targetWrap.querySelector('.meta');
+                      if(metaEl){
+                        let ed = metaEl.querySelector('.edited');
+                        if(!ed){
+                          ed = document.createElement('span');
+                          ed.className = 'edited';
+                          ed.textContent = ' (edited)';
+                          metaEl.appendChild(ed);
+                        }
+                      }
+                    } else {
+                      // targetWrap is gone (e.g. room switched) — nothing to update
+                    }
+                  }catch(e){ console.warn('message-edit: DOM update failed', e); }
+                  // ── end live DOM update ────────────────────────────────────
+
                   window.showToast && window.showToast('Message edited','success');
                 } else {
                   window.showToast && window.showToast('Failed to edit message','error');

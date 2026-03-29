@@ -30,11 +30,23 @@
           <button id="send-btn" type="submit">Send</button>
         </div>
       </form>
+      <!-- shown instead of the composer when the user is not a member of the selected room -->
+      <div id="join-bar" class="join-bar" style="display:none" aria-live="polite">
+        <span class="join-bar-text">You are not a member of this room.</span>
+        <button id="join-bar-btn" type="button" class="btn-join">Join Room</button>
+      </div>
     </main>
 
     <aside class="rightbar">
+      <section class="my-rooms" id="my-rooms-section">
+        <h3 class="rooms-header">My Rooms</h3>
+        <ul id="my-rooms-list"></ul>
+      </section>
       <section class="rooms" id="rooms-section">
         <h3 class="rooms-header">Rooms <button id="rooms-toggle" aria-label="Toggle rooms">▾</button></h3>
+        <div class="rooms-search">
+          <input id="rooms-search-input" type="text" placeholder="Search rooms…" autocomplete="off" />
+        </div>
         <ul id="rooms-list"></ul>
       </section>
       <section class="contacts">
@@ -44,6 +56,10 @@
       <section class="members">
         <h3>Members</h3>
         <ul id="members-list"></ul>
+      </section>
+      <section id="invitations-section" class="invitations-section" style="display:none">
+        <h3 class="invitations-header">Pending Invitations</h3>
+        <ul id="invitations-list" class="invitations-list"></ul>
       </section>
     </aside>
   </div>
@@ -65,6 +81,7 @@
   <script src="/static/app/ui/emoji.js"></script>
   <script src="/static/app/ui/attachments.js"></script>
   <script src="/static/app/ui/admin.js"></script>
+  <script src="/static/app/ui/invitations.js"></script>
   <script src="/static/app/bootstrap.js"></script>
   <script src="/static/app/ui/messages-ui.js"></script>
   <script src="/static/app/data/i18n.js"></script>

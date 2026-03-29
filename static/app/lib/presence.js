@@ -27,13 +27,16 @@
     try{
       // If caller provided token/jti/tabId (tests pass them), ensure they're applied
       try{ window.appState = window.appState || {}; if(tokenArg) window.appState.token = tokenArg; if(jtiArg) window.appState.jti = jtiArg; if(tabIdArg) window.appState.tabId = tabIdArg; }catch(e){}
-  // Heartbeat interval: read from site config or default to 2000ms
-  const hbInterval = (window && window.SITE_CONFIG && window.SITE_CONFIG.presencePollMs) ? parseInt(window.SITE_CONFIG.presencePollMs, 10) : 2000;
-      // Issue first heartbeat and optionally await it in test mode to avoid racing with presence GET
+      // Issue a single initial heartbeat to register this tab.
+      // Subsequent heartbeats are driven exclusively by user activity
+      // (startActivityMonitoring) so last_active naturally goes stale
+      // after ~60 s of inactivity, which the server interprets as AFK.
       const p = heartbeat();
-      if(window && window.__TEST_MODE){ try{ await p; }catch(e){} }
-      if(window._hb) try{ clearInterval(window._hb); }catch(e){}
-      window._hb = setInterval(heartbeat, hbInterval);
+      // Always await the initial heartbeat to ensure tab_presence is registered
+      // before presence polling queries the server
+      try{ await p; }catch(e){}
+      if(window._hb) try{ clearInterval(window._hb); window._hb = null; }catch(e){}
+      // NOTE: no setInterval here — activity monitoring handles ongoing heartbeats
     }catch(e){ console.warn('startHeartbeat failed', e); }
   }
 
@@ -55,7 +58,11 @@
           else if(/^offline$/i.test(raw)) display = 'offline';
           else display = 'offline';
           if(el) el.textContent = display;
-          if(dot){ const s = String(display).toLowerCase(); if(s === 'online') dot.style.background = 'green'; else if(s === 'afk') dot.style.background = 'orange'; else dot.style.background = 'gray'; }
+          // Update dot class to match status (CSS will handle the color)
+          if(dot){
+            const statusClass = String(display).toLowerCase();
+            dot.className = 'presence-dot ' + statusClass;
+          }
         }catch(e){ console.warn('presence poll render failed', e); }
       }catch(e){ console.warn('presence poll failed', e); }
     }

@@ -273,13 +273,15 @@ function showStatus(txt, visible=true, timeout=4000){
 }
 
 function onLogin(user){
-  try{ if(window && typeof window.onLogin === 'function') return window.onLogin(user); }catch(e){}
   try{
     const meEl = document.getElementById('me');
     if(meEl){ meEl.style.display='block'; const nameEl = document.getElementById('me-name'); if(nameEl) nameEl.textContent = user.username; }
   }catch(e){}
-  try{ if(window && typeof window.startHeartbeat === 'function' && window.startHeartbeat !== startHeartbeat) window.startHeartbeat(); else startHeartbeat(); }catch(e){}
-  try{ if(window && typeof window.startPresencePolling === 'function' && window.startPresencePolling !== startPresencePolling) window.startPresencePolling(user.id); else startPresencePolling(user.id); }catch(e){}
+  // Fire heartbeat and presence polling sequentially: ensure heartbeat lands before polling
+  (async () => {
+    try{ await startHeartbeat(); }catch(e){}
+    try{ startPresencePolling(user.id); }catch(e){}
+  })();
   try{ if(window && typeof window.startActivityMonitoring === 'function') { window.startActivityMonitoring(); } }catch(e){}
 }
 
@@ -313,31 +315,25 @@ async function heartbeat(){
     }
     // Always send cookie credentials (helps when using HttpOnly session cookie)
     try{ opts.credentials = 'include'; }catch(e){}
-    // Debug: log that heartbeat is being sent (no token values logged)
-    try{
-      console.debug('heartbeat sending', { keys: Object.keys(payload), willSendCredentials: !!opts.credentials, hasAuthHeader: !!headers['Authorization'] });
-    }catch(e){}
     try{
       const r = await fetch(BASE + '/presence/heartbeat', opts);
-      // Attempt to read response body for debugging (best-effort)
-      let body = null;
-      try{ body = await r.text(); }catch(e){ body = null; }
-      try{ console.debug('heartbeat response', { status: r.status, ok: r.ok, body }); }catch(e){}
-    }catch(err){ try{ console.warn('heartbeat fetch failed', err); }catch(e){} }
+    }catch(err){}
   }catch(e){}
 }
 
-function startHeartbeat(tokenArg, jtiArg, tabIdArg){
-  try{ if(window && typeof window.startHeartbeat === 'function' && window.startHeartbeat !== startHeartbeat) return window.startHeartbeat(tokenArg, jtiArg, tabIdArg); }catch(e){}
+async function startHeartbeat(tokenArg, jtiArg, tabIdArg){
   // apply provided args to local variables used by main.js scope
   try{ if(tokenArg) { token = tokenArg; try{ window.appState = window.appState || {}; window.appState.token = tokenArg; }catch(e){} } if(jtiArg) jti = jtiArg; if(tabIdArg) tabId = tabIdArg; }catch(e){}
-  // start with an immediate heartbeat and then run per configured interval
-  heartbeat(); window._hb = setInterval(heartbeat, __presencePollInterval);
+  // Send a single initial heartbeat to register this tab. Subsequent
+  // heartbeats are driven exclusively by user activity (startActivityMonitoring)
+  // so that last_active naturally goes stale after ~60 s of inactivity,
+  // which the server interprets as AFK.
+  await heartbeat();
+  // NOTE: no setInterval here — activity monitoring handles ongoing heartbeats
 }
 
 let _presenceInterval = null;
 function startPresencePolling(userId){
-  try{ if(window && typeof window.startPresencePolling === 'function' && window.startPresencePolling !== startPresencePolling) return window.startPresencePolling(userId); }catch(e){}
   // local fallback: poll presence every 10s
   async function update(){
     try{
@@ -354,7 +350,11 @@ function startPresencePolling(userId){
         else if(/^offline$/i.test(raw)) display = 'offline';
   else display = 'offline';
         if(el) el.textContent = display;
-        if(dot){ const s = String(display).toLowerCase(); if(s === 'online') dot.style.background = 'green'; else if(s === 'afk') dot.style.background = 'orange'; else dot.style.background = 'gray'; }
+        // Update dot class to match status (CSS will handle the color)
+        if(dot){
+          const statusClass = String(display).toLowerCase();
+          dot.className = 'presence-dot ' + statusClass;
+        }
       }catch(e){ console.warn('render presence failed', e); }
     }catch(e){ console.warn('presence poll failed', e); }
   }
@@ -445,9 +445,7 @@ function attachPageHandlers(root=document){
       try{
         addFriendBtn.disabled = true;
         showStatus('Sending friend add...');
-        console.log('POST /friends/add', { friend_id: fid });
         const r = await fetch(BASE + '/friends/add', {method:'POST', credentials: 'include', headers: authHeaders('application/json'), body: JSON.stringify({friend_id: fid})});
-        console.log('/friends/add response', r.status, await r.clone().text());
         if(r.status===200) await loadFriends(); else { const body = await r.json().catch(()=>null); showStatus('Failed: ' + JSON.stringify(body)); showToast(JSON.stringify(body), 'error'); }
       }catch(e){ showToast('failed to add friend', 'error') }
       finally{ addFriendBtn.disabled = false }
@@ -462,15 +460,25 @@ try{ window.addEventListener && window.addEventListener('shared-header-loaded', 
 const requestByUsernameBtn = document.getElementById('request-by-username'); if(requestByUsernameBtn) requestByUsernameBtn.onclick = async ()=>{
   const uname = document.getElementById('friend-username-input').value || '';
   const msg = (document.getElementById('friend-message-input') && document.getElementById('friend-message-input').value) || 'hi';
-  if(!uname) return showToast('enter username', 'error');
+  if(!uname) return showToast('Please enter a username', 'error');
   try{
   requestByUsernameBtn.disabled = true;
   showStatus('Sending friend request...');
-  console.log('POST /friends/request', { username: uname, message: msg });
   const r = await fetch(BASE + '/friends/request', {method:'POST', credentials: 'include', headers: authHeaders('application/json'), body: JSON.stringify({username: uname, message: msg})});
-  console.log('/friends/request response', r.status, await r.clone().text());
-  if(r.status === 200){ await loadIncomingRequests(); await loadFriends(); showStatus('Request sent'); showToast('request sent', 'success') } else { const body = await r.json().catch(()=>null); showStatus('Failed: ' + JSON.stringify(body)); showToast(JSON.stringify(body), 'error') }
-  }catch(e){ showToast('failed to send request', 'error') }
+  if(r.status === 200){ 
+    await loadIncomingRequests(); 
+    await loadFriends(); 
+    document.getElementById('friend-username-input').value = '';
+    document.getElementById('friend-message-input').value = '';
+    showStatus('Friend request sent successfully! ✓');
+    showToast('Friend request sent to ' + uname, 'success') 
+  } else { 
+    const body = await r.json().catch(()=>({error:'Unknown error'}));
+    const errMsg = body.detail || body.error || JSON.stringify(body);
+    showStatus('Failed: ' + errMsg); 
+    showToast('Failed: ' + errMsg, 'error') 
+  }
+  }catch(e){ showToast('Error sending request: ' + e.message, 'error'); showStatus('Error: ' + e.message) }
   finally{ requestByUsernameBtn.disabled = false }
 }
 
@@ -484,9 +492,8 @@ const debugBtn = document.getElementById('debug-inspect'); if(debugBtn) debugBtn
     showStatus('Inspecting...');
     const r = await fetch(BASE + '/debug/inspect', {credentials: 'include'});
     const data = await r.json();
-    console.log('/debug/inspect', data);
     showStatus(JSON.stringify(data), true, 10000);
-  }catch(e){ console.warn('debug inspect failed', e); showStatus('inspect failed'); }
+  }catch(e){ showStatus('inspect failed'); }
 }
 
 // admin UI

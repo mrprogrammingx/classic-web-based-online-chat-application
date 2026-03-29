@@ -53,13 +53,25 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
   .topnav .nav-left a.btn{padding:6px 8px;font-size:13px}
 }
 .app-grid{display:flex;height:calc(100vh - var(--topbar-height))}
-.rightbar{width:var(--sidebar-width);background:#fff;border-left:1px solid #e6e9ef;padding:12px;overflow:auto;display:flex;flex-direction:column}
-.rightbar h3{margin:6px 0;color:var(--muted);font-size:13px;display:flex;align-items:center;justify-content:space-between}
-.rightbar ul{list-style:none;padding:0;margin:0}
-.rightbar li{padding:8px;border-radius:6px;cursor:pointer}
-.rightbar li:hover{background:#f1f5fb}
+.rightbar{width:var(--sidebar-width);background:linear-gradient(180deg,#f8fafc 0%,#f1f5fb 100%);border-left:2px solid #e0e7ff;padding:16px;overflow:auto;display:flex;flex-direction:column;gap:16px;box-shadow:inset 1px 0 0 rgba(255,255,255,0.5)}
+.rightbar h3{margin:0;padding:8px 0;color:#334155;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #e0e7ff;padding-bottom:8px}
+.rightbar section{background:#fff;border-radius:8px;padding:12px;border:1px solid #e0e7ff;box-shadow:0 1px 3px rgba(15,23,36,0.04)}
+.rightbar ul{list-style:none;padding:0;margin:8px 0 0 0}
+.rightbar li{padding:10px 8px;border-radius:6px;cursor:pointer;border-left:3px solid transparent;transition:all 0.2s ease;background:#f8fafc;margin-bottom:4px}
+.rightbar li:hover{background:#ede9fe;border-left-color:#a78bfa;transform:translateX(2px)}
+.me-section{padding:14px !important;background:linear-gradient(135deg,#fef3c7 0%,#fecaca 100%) !important;border:1.5px solid #fdcb2e !important}
+.me-section h3{color:#b45309 !important;border-bottom-color:#fdcb2e !important}
+.rightbar section p{margin:6px 0;color:#475569;font-size:13px;line-height:1.5}
+.rightbar section strong{color:#1e293b;font-weight:600}
+.rightbar input{width:100%;padding:8px;border:1.5px solid #e0e7ff;border-radius:6px;font-size:13px;background:#fafbfc;color:#1e293b;transition:all 0.2s ease}
+.rightbar input:focus{outline:none;border-color:#a78bfa;background:#fff;box-shadow:0 0 0 3px rgba(167,139,250,0.1)}
+.rightbar input::placeholder{color:#cbd5e1}
+.rightbar textarea{width:100%;padding:8px;border:1.5px solid #e0e7ff;border-radius:6px;font-size:13px;background:#fafbfc;color:#1e293b;transition:all 0.2s ease;font-family:inherit;resize:vertical}
+.rightbar textarea:focus{outline:none;border-color:#a78bfa;background:#fff;box-shadow:0 0 0 3px rgba(167,139,250,0.1)}
+.rightbar textarea::placeholder{color:#cbd5e1}
 .members .online-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px}
 .members .online-dot.online{background:#2ecc71}
+.members .online-dot.afk{background:#f39c12}
 .members .online-dot.offline{background:#ced4da}
 .rooms.compacted ul{max-height:48px;overflow:hidden}
 .messages-area{flex:1;display:flex;flex-direction:column;position:relative}
@@ -109,6 +121,33 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 .composer textarea{flex:1;padding:8px;border:1px solid #e6e9ef;border-radius:8px;resize:none;margin-bottom:8px}
 .composer-actions{display:flex;justify-content:flex-end}
 .composer-actions button{padding:10px 14px;border:none;background:var(--accent);color:#fff;border-radius:8px}
+.join-bar{display:flex;align-items:center;justify-content:center;gap:14px;padding:14px 16px;border-top:1px solid #e6e9ef;background:#f7f9fc;flex-wrap:wrap}
+.join-bar-text{color:var(--muted,#888);font-size:14px}
+.btn-decline-invite{padding:8px 14px;background:#f1f3f7;color:#555;border:1px solid #d1d5db;border-radius:8px;cursor:pointer;font-size:14px}
+.btn-decline-invite:hover{background:#e5e7eb}
+/* invite button in members header */
+.btn-invite-user{margin-left:8px;padding:4px 10px;font-size:12px;background:var(--accent,#4a90e2);color:#fff;border:none;border-radius:6px;cursor:pointer;vertical-align:middle}
+.btn-invite-user:hover{opacity:0.88}
+/* invite modal */
+.invite-modal-desc{margin:0 0 10px;font-size:14px;color:#444}
+.invite-search-row{display:flex;gap:8px;margin-bottom:10px}
+.invite-search-input{flex:1;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px}
+.btn-search{padding:8px 14px;background:var(--accent,#4a90e2);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;white-space:nowrap}
+.invite-results{list-style:none;padding:0;margin:0;max-height:220px;overflow-y:auto}
+.invite-result-item{display:flex;align-items:center;justify-content:space-between;padding:8px 4px;border-bottom:1px solid #f0f0f0}
+.invite-result-name{font-size:14px;color:#333}
+.btn-send-invite{padding:5px 12px;font-size:13px;background:var(--accent,#4a90e2);color:#fff;border:none;border-radius:6px;cursor:pointer}
+.btn-send-invite:disabled{opacity:0.6;cursor:default}
+.invite-no-results{color:var(--muted,#888);font-size:13px;padding:6px 0}
+.invite-status{font-size:13px;color:var(--muted,#888);margin:4px 0 0}
+/* invitations sidebar section */
+.invitations-section{border-top:1px solid #e6e9ef;padding-top:8px;margin-top:4px}
+.invitations-header{font-size:13px;font-weight:600;color:#e97c2f;margin:0 0 6px;text-transform:uppercase;letter-spacing:.04em}
+.invitations-list{list-style:none;padding:0;margin:0}
+.invitation-item{padding:8px 6px;border-bottom:1px solid #f0f0f0}
+.invitation-item:last-child{border-bottom:none}
+.invitation-room-name{display:block;font-size:13px;font-weight:500;color:#333;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.invitation-actions{display:flex;gap:6px}
 
 .reply-preview{background:#fff8e1;border:1px solid #ffe0a3;padding:8px;border-radius:8px;display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}
 .reply-text{color:#555;font-size:13px;max-height:48px;overflow:hidden}
@@ -153,13 +192,80 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 .btn:hover{filter:brightness(0.98)}
 .btn-primary{background:var(--accent);color:#fff;border:none;box-shadow:0 6px 18px rgba(43,144,255,0.12)}
 .btn-secondary{background:#fff;border:1px solid #e6eef9}
+.rightbar .btn{font-size:13px;padding:8px 12px;transition:all 0.2s ease}
+.rightbar .btn-primary{background:linear-gradient(135deg,#2563eb 0%,#1d4ed8 100%);box-shadow:0 4px 12px rgba(37,99,235,0.25)}
+.rightbar .btn-primary:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(37,99,235,0.35);filter:brightness(1.05)}
+.rightbar .btn-secondary{background:#f8fafc;border:1.5px solid #cbd5e1}
+.rightbar .btn-secondary:hover{background:#ede9fe;border-color:#a78bfa;color:#6d28d9}
 .btn-danger{background:#ff4d4f;color:#fff;border:none}
 .btn.small{padding:6px 8px;font-size:13px}
 .hidden{display:none!important}
 
+/* Action buttons for friends list (remove, ban, unban) */
+.remove-btn, .ban-btn, .unban-btn{
+  padding:6px 10px;
+  font-size:12px;
+  border:none;
+  border-radius:5px;
+  cursor:pointer;
+  font-weight:500;
+  transition:all 0.2s ease;
+  margin-left:4px;
+  white-space:nowrap;
+}
+.remove-btn{
+  background:#e8f4f8;
+  color:#0284c7;
+  border:1px solid #7dd3fc;
+}
+.remove-btn:hover{
+  background:#0284c7;
+  color:#fff;
+  box-shadow:0 2px 8px rgba(2,132,199,0.3);
+  transform:translateY(-1px);
+}
+.remove-btn:disabled{
+  opacity:0.6;
+  cursor:not-allowed;
+  transform:none;
+}
+.ban-btn{
+  background:#fef2f2;
+  color:#dc2626;
+  border:1px solid #fca5a5;
+}
+.ban-btn:hover{
+  background:#dc2626;
+  color:#fff;
+  box-shadow:0 2px 8px rgba(220,38,38,0.3);
+  transform:translateY(-1px);
+}
+.ban-btn:disabled{
+  opacity:0.6;
+  cursor:not-allowed;
+  transform:none;
+}
+.unban-btn{
+  background:#f0fdf4;
+  color:#16a34a;
+  border:1px solid #86efac;
+}
+.unban-btn:hover{
+  background:#16a34a;
+  color:#fff;
+  box-shadow:0 2px 8px rgba(22,163,74,0.3);
+  transform:translateY(-1px);
+}
+.unban-btn:disabled{
+  opacity:0.6;
+  cursor:not-allowed;
+  transform:none;
+}
+
 /* small presence dot for home page */
 .presence-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;vertical-align:middle;background:gray}
 .presence-dot.online{background:#2ecc71}
+.presence-dot.afk{background:#f39c12}
 .presence-dot.offline{background:#ced4da}
 
 /* Admin modal and small layout utilities for home.html */
@@ -171,6 +277,12 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 /* unread notification badge used near room/contact names */
 .unread-badge{background:#d33;color:#fff;padding:2px 6px;border-radius:999px;font-size:12px;margin-left:8px;min-width:20px;text-align:center;display:inline-block}
 .unread-badge.hidden{display:none}
+/* header unread button active state */
+.unread-total.has-unread .unread-count{background:#d33;color:#fff;border-radius:999px;padding:1px 6px;font-weight:700;font-size:12px;animation:unread-pulse .8s ease-in-out}
+@keyframes unread-pulse{0%{transform:scale(1)}50%{transform:scale(1.25)}100%{transform:scale(1)}}
+/* active highlight for sidebar list items */
+#rooms-list li.active,#contacts-list li.active,#my-rooms-list li.active{background:var(--accent-bg,#eef3ff);border-radius:6px}
+#contacts-list li{position:relative;cursor:pointer;padding:6px 10px;display:flex;align-items:center;gap:6px}
 
 /* user-info in header */
 .user-info{display:inline-flex;align-items:center;gap:10px;margin-right:16px}
@@ -319,3 +431,98 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 .toast.success{background:#2ecc71}
 .toast.error{background:#d33}
 @keyframes toast-in{to{opacity:1;transform:translateY(0)}}
+
+/* My Rooms sidebar section */
+.my-rooms{border-bottom:1px solid #e6e9ef;padding-bottom:6px;margin-bottom:4px}
+.my-rooms h3{font-size:13px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+#my-rooms-list li{padding:8px;border-radius:6px;cursor:pointer}
+#my-rooms-list li:hover{background:#f1f5fb}
+#my-rooms-list li.empty-hint{color:var(--muted);font-style:italic;cursor:default;font-size:13px}
+#my-rooms-list li.empty-hint:hover{background:transparent}
+
+/* Rooms search input */
+.rooms-search{padding:0 0 6px}
+.rooms-search input{width:100%;padding:7px 10px;border:1px solid #e6e9ef;border-radius:6px;font-size:13px;background:#f9fafb;transition:border-color 160ms}
+.rooms-search input:focus{border-color:var(--accent);outline:none;background:#fff;box-shadow:0 0 0 3px rgba(43,144,255,0.08)}
+
+/* Frozen conversation bar (dialog banned) */
+.frozen-bar{display:flex;align-items:center;justify-content:center;padding:12px 16px;border-top:1px solid #e6c9a8;background:#fff8e1;color:#8b6914;font-size:14px;font-weight:500}
+
+/* Room Members section on home page */
+#room-members-section{border-top:1px solid #e6e9ef;padding-top:8px;margin-top:4px}
+.room-members-group{margin-bottom:10px}
+.room-members-title{margin:4px 0 2px;font-size:13px;font-weight:600;color:#2b3b4a}
+.room-members-list{list-style:none;padding:0;margin:0}
+.room-members-list li{padding:4px 6px;font-size:13px;display:flex;align-items:center;gap:6px}
+
+/* ── Classic Web Chat overrides ─────────────────────────────────────────
+   Flatten gradients, reduce shadows, make the UI feel like a traditional
+   web chat (IRC-like) rather than a modern social network.
+   ──────────────────────────────────────────────────────────────────── */
+
+/* header: flat white bar */
+.topmenu{background:#fff;box-shadow:none;border-bottom:2px solid #ddd}
+
+/* sidebar: minimal chrome */
+.rightbar{background:#fafafa;border-left:2px solid #ddd;box-shadow:none}
+
+/* messages area: plain flat background */
+.messages-header{background:#fff;border-bottom:2px solid #ddd}
+.messages{background:#fafafa}
+
+/* message bubbles: flat, no gradient, minimal shadow */
+.message{border-radius:4px;background:#fff;box-shadow:none;border:1px solid #e0e0e0;max-width:80%}
+.message.me{background:var(--accent);color:#fff;box-shadow:none;border:1px solid var(--accent);border-radius:4px}
+
+/* header nav buttons: flatter styling */
+.topnav .nav-left a.btn{border-radius:4px;transition:background 120ms}
+.topnav .nav-left a.btn:hover{background:#eee;transform:none;box-shadow:none}
+.topnav .nav-left a.btn.btn-primary{background:var(--accent);border-radius:4px;box-shadow:none}
+.topnav .nav-left a.btn.btn-primary::before{content:none}
+.topnav .nav-left a.btn.btn-primary::after{content:none}
+.topnav .nav-left a.btn.btn-primary.active-nav{animation:none}
+
+/* join/leave buttons: flat */
+.btn-join{border-radius:4px;box-shadow:none;background:var(--accent)}
+.btn-join:hover{transform:none;box-shadow:none}
+.btn-leave{border-radius:4px;box-shadow:none}
+.btn-leave:hover{transform:none;box-shadow:none}
+
+/* composer: simple border */
+.composer{border-top:2px solid #ddd;background:#fff;box-shadow:none}
+.composer textarea{border-radius:4px}
+.composer-actions button{border-radius:4px}
+
+/* modals: flat, simple shadow */
+.modal-box{border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,0.15)}
+.modal-actions .confirm{border-radius:4px;box-shadow:none}
+
+/* toasts: flat */
+.toast{border-radius:4px;box-shadow:none}
+
+/* avatar: simple circle */
+.msg-avatar{box-shadow:none;border:1px solid #ddd}
+.message.me .msg-avatar{border-color:rgba(255,255,255,0.3);box-shadow:none}
+
+/* sessions list: flat cards */
+#sessions .sessions-list li{box-shadow:none;border:1px solid #e0e0e0;border-radius:4px}
+
+/* admin panel: flat */
+.admin-panel{border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,0.15)}
+.admin-card{border-radius:6px;box-shadow:none;border:1px solid #ddd}
+
+/* unread button: flat */
+.unread-total:hover{transform:none;box-shadow:none}
+
+/* buttons: flat */
+.btn{border-radius:4px}
+.btn-primary{border-radius:4px;box-shadow:none}
+.btn-secondary{border-radius:4px}
+
+/* New Room button: flat */
+.nav-left #btn-new-room{border-radius:4px;box-shadow:none}
+.nav-left #btn-new-room:hover{transform:none;filter:none}
+
+/* remove all remaining float/hover transforms */
+.nav-actions #admin-open{border-radius:4px;box-shadow:none}
+.nav-actions #admin-open:hover{transform:none;box-shadow:none}
