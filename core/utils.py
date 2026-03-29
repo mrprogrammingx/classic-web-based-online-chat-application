@@ -3,7 +3,8 @@ import jwt
 from passlib.context import CryptContext
 import aiosqlite
 import logging
-from db import DB
+import db as db_mod
+DB = db_mod.DB
 from fastapi import HTTPException, Request
 from typing import List, Dict, Any, Optional
 from core.config import JWT_SECRET, JWT_ALGO
@@ -30,6 +31,12 @@ def presence_online_seconds() -> int:
     # Evaluate the config value at call time so tests can change environment
     # variables prior to starting the server or calling presence helpers.
     return int(config.PRESENCE_ONLINE_SECONDS)
+
+
+def afk_seconds() -> int:
+    """AFK threshold: seconds of inactivity before a user with open tabs is AFK.
+    Defaults to 60 (1 minute). Tests may override via AFK_SECONDS env var."""
+    return int(config.AFK_SECONDS)
 
 
 def hash_pw(pw: str) -> str:
@@ -139,73 +146,92 @@ async def remove_tab(tab_id: str):
         await db.commit()
 
 
-async def get_presence_status(user_id: int) -> str:
-    cutoff = int(time.time()) - presence_online_seconds()
+async def cleanup_stale_tabs(max_age_seconds: int = 86400):
+    """Remove tab records that haven't been touched in max_age_seconds (default: 24 hours).
+    
+    This cleans up tab records from browsers that were closed without sending an
+    explicit close signal. Called periodically during presence checks to keep the
+    database clean and ensure users with all tabs closed show as 'offline'.
+    """
+    cutoff = int(time.time()) - max_age_seconds
     async with aiosqlite.connect(DB) as db:
+        cur = await db.execute('SELECT COUNT(*) FROM tab_presence WHERE last_active < ?', (cutoff,))
+        count = (await cur.fetchone())[0]
+        if count > 0:
+            await db.execute('DELETE FROM tab_presence WHERE last_active < ?', (cutoff,))
+            await db.commit()
+            logger.info('cleanup_stale_tabs: deleted %d stale tab records (older than %d seconds)', count, max_age_seconds)
+
+
+async def get_presence_status(user_id: int) -> str:
+    """Determine a single user's presence status.
+
+    Rules:
+      - **online**: at least one tab_presence row with last_active within
+        the AFK threshold (user interacted recently).
+      - **AFK**: tab_presence rows exist but ALL are older than the AFK
+        threshold (user has tabs open but hasn't interacted).
+      - **offline**: no tab_presence rows at all (no open tabs).
+    """
+    # Clean up stale tabs before checking presence
+    await cleanup_stale_tabs()
+    
+    afk_cutoff = int(time.time()) - afk_seconds()
+    async with aiosqlite.connect(DB) as db:
+        # count total tabs and tabs that are active (within AFK window)
         cur = await db.execute('SELECT COUNT(*) FROM tab_presence WHERE user_id = ?', (user_id,))
         total = (await cur.fetchone())[0]
         if total == 0:
-            # no tab_presence rows -> consider offline unless session activity indicates otherwise
-            cur2 = await db.execute('SELECT MAX(last_active) FROM sessions WHERE user_id = ?', (user_id,))
-            sess_last = (await cur2.fetchone())[0]
-            if sess_last and int(sess_last) > cutoff:
-                return 'online'
             return 'offline'
-        cur = await db.execute('SELECT COUNT(*) FROM tab_presence WHERE user_id = ? AND last_active > ?', (user_id, cutoff))
+        cur = await db.execute('SELECT COUNT(*) FROM tab_presence WHERE user_id = ? AND last_active > ?', (user_id, afk_cutoff))
         active = (await cur.fetchone())[0]
-        logger.info("Calculating presence status for user %s with active: %d cutoff %d (current time %d)", user_id, active, cutoff, int(time.time()))
-
         if active > 0:
-            return 'online'
-        # No active tab, but possibly recent session activity
-        cur3 = await db.execute('SELECT MAX(last_active) FROM sessions WHERE user_id = ?', (user_id,))
-        sess_last2 = (await cur3.fetchone())[0]
-        if sess_last2 and int(sess_last2) > cutoff:
             return 'online'
         return 'AFK'
 
 
 async def get_presence_statuses(user_ids: list) -> Dict[str, str]:
+    """Batch presence lookup for multiple users.
+
+    Uses the same rules as get_presence_status:
+      - Has tab with last_active within AFK threshold → online
+      - Has tabs but all stale → AFK
+      - No tabs → offline
+    """
     if not user_ids:
         return {}
-    cutoff = int(time.time()) - presence_online_seconds()
-    logger.info("Calculating presence statuses for users %s with cutoff %d (current time %d)", user_ids, cutoff, int(time.time()))
+    
+    # Clean up stale tabs before checking presence
+    await cleanup_stale_tabs()
+    
+    afk_cutoff = int(time.time()) - afk_seconds()
     placeholders = ','.join(['?'] * len(user_ids))
-    sql = f"SELECT user_id, COUNT(*) as total, MAX(last_active) as last_active_max FROM tab_presence WHERE user_id IN ({placeholders}) GROUP BY user_id"
-    params = list(user_ids)
+    # For each user: total tab count AND count of tabs active within the AFK window
+    sql = f"""
+        SELECT user_id,
+               COUNT(*) as total,
+               SUM(CASE WHEN last_active > ? THEN 1 ELSE 0 END) as active_count
+        FROM tab_presence
+        WHERE user_id IN ({placeholders})
+        GROUP BY user_id
+    """
+    params = [afk_cutoff] + list(user_ids)
     out: Dict[str, str] = {}
     async with aiosqlite.connect(DB) as db:
         cur = await db.execute(sql, tuple(params))
         rows = await cur.fetchall()
         found = set()
-        # map of user_id -> max last_active from tab_presence
-        tp_max = {}
         for r in rows:
-            uid, total, last_active_max = r[0], r[1], r[2]
+            uid, total, active_count = r[0], r[1], r[2] or 0
             found.add(uid)
-            tp_max[uid] = int(last_active_max) if last_active_max is not None else None
             if total == 0:
                 out[str(uid)] = 'offline'
-            elif last_active_max and int(last_active_max) > cutoff:
+            elif active_count > 0:
                 out[str(uid)] = 'online'
             else:
                 out[str(uid)] = 'AFK'
+        # users with no tab_presence rows at all → offline
         for uid in user_ids:
             if uid not in found:
                 out[str(uid)] = 'offline'
-        # For any user that has no tab_presence rows (marked 'offline'),
-        # check sessions.last_active as a fallback. Do NOT override 'AFK'
-        # derived from tab_presence with session activity — tests expect an
-        # explicitly-old tab_presence to indicate AFK even if the session
-        # last_active is recent.
-        to_check = [int(u) for u, s in out.items() if s == 'offline']
-        if to_check:
-            placeholders2 = ','.join(['?'] * len(to_check))
-            sql2 = f"SELECT user_id, MAX(last_active) as sess_last FROM sessions WHERE user_id IN ({placeholders2}) GROUP BY user_id"
-            cur2 = await db.execute(sql2, tuple(to_check))
-            srows = await cur2.fetchall()
-            for sr in srows:
-                uid2, sess_last = sr[0], sr[1]
-                if sess_last and int(sess_last) > cutoff:
-                    out[str(uid2)] = 'online'
     return out
