@@ -60,6 +60,8 @@ def server():
     # ensure presence timeout is small and deterministic in tests (seconds)
     # presence tests expect a small value (they sleep for ~4s) — force it to 3s
     os.environ['PRESENCE_ONLINE_SECONDS'] = '3'
+    # AFK threshold used by the new presence logic (online/AFK/offline)
+    os.environ['AFK_SECONDS'] = '3'
     # enable test-only endpoints in server
     os.environ.setdefault('TEST_MODE', '1')
 

@@ -110,3 +110,68 @@ def test_banned_user_cannot_accept_invite(client):
     client.s.headers.update({'Authorization': f'Bearer {vic_token}'})
     acc = client.post(f'/rooms/{rid}/invites/{iid}/accept')
     assert acc.status_code == 403
+
+
+def test_invitations_mine_endpoint(client):
+    """GET /invitations/mine returns enriched pending invitations for the logged-in user."""
+    owner, owner_token = _reg_and_token(client, 'mineown')
+    invitee, inv_token = _reg_and_token(client, 'mineinv')
+
+    # create a private room
+    client.s.headers.update({'Authorization': f'Bearer {owner_token}'})
+    rn = f"mineroom_{str(uuid.uuid4())[:8]}"
+    rc = client.post('/rooms', json={'name': rn, 'visibility': 'private'})
+    assert rc.status_code == 200
+    rid = rc.json()['room']['id']
+
+    # invite the user
+    inv = client.post(f'/rooms/{rid}/invite', json={'invitee_id': invitee['id']})
+    assert inv.status_code == 200
+
+    # invitee calls /invitations/mine — should see the pending invite with room_name
+    client.s.headers.update({'Authorization': f'Bearer {inv_token}'})
+    resp = client.get('/invitations/mine')
+    assert resp.status_code == 200
+    invites = resp.json().get('invites', [])
+    assert any(i['room_id'] == rid for i in invites), "Pending invite should appear in /invitations/mine"
+    matching = [i for i in invites if i['room_id'] == rid][0]
+    assert matching.get('room_name') == rn, "room_name should be included in the response"
+    iid = matching['id']
+
+    # accept the invite via the room-specific endpoint
+    accepted = client.post(f'/rooms/{rid}/invites/{iid}/accept')
+    assert accepted.status_code == 200
+
+    # /invitations/mine should no longer list it
+    resp2 = client.get('/invitations/mine')
+    assert resp2.status_code == 200
+    invites2 = resp2.json().get('invites', [])
+    assert not any(i['room_id'] == rid for i in invites2), "Accepted invite should no longer appear in /invitations/mine"
+
+
+def test_invitations_mine_decline(client):
+    """Declining an invite removes it from /invitations/mine."""
+    owner, owner_token = _reg_and_token(client, 'decown')
+    invitee, inv_token = _reg_and_token(client, 'decinv')
+
+    client.s.headers.update({'Authorization': f'Bearer {owner_token}'})
+    rn = f"decroom_{str(uuid.uuid4())[:8]}"
+    rc = client.post('/rooms', json={'name': rn, 'visibility': 'private'})
+    assert rc.status_code == 200
+    rid = rc.json()['room']['id']
+
+    client.post(f'/rooms/{rid}/invite', json={'invitee_id': invitee['id']})
+
+    client.s.headers.update({'Authorization': f'Bearer {inv_token}'})
+    resp = client.get('/invitations/mine')
+    invites = resp.json().get('invites', [])
+    matching = [i for i in invites if i['room_id'] == rid]
+    assert matching
+    iid = matching[0]['id']
+
+    dec = client.post(f'/rooms/{rid}/invites/{iid}/decline')
+    assert dec.status_code == 200
+
+    resp2 = client.get('/invitations/mine')
+    invites2 = resp2.json().get('invites', [])
+    assert not any(i['room_id'] == rid for i in invites2)

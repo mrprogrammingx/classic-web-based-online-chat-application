@@ -1,5 +1,14 @@
 import time
+import os
 import uuid
+import pytest
+
+# Time-based tests only work when the server was started with a small AFK threshold.
+_server_afk = max(int(os.getenv('AFK_SECONDS', '60')), 5)
+_needs_fast_afk = pytest.mark.skipif(
+    _server_afk > 10,
+    reason=f'time-based AFK test requires AFK_SECONDS ≤ 10 (got {_server_afk})',
+)
 
 
 def _reg_and_token(client, prefix):
@@ -12,6 +21,7 @@ def _reg_and_token(client, prefix):
     return r.json()['user'], r.json()['token']
 
 
+@_needs_fast_afk
 def test_presence_transitions(client):
     s = client
     user, token = _reg_and_token(s, 'presence')
@@ -38,8 +48,10 @@ def test_presence_transitions(client):
     # should be online immediately
     st = s.get(f"/presence/{user['id']}").json()['status']
     assert st == 'online'
-    # wait slightly longer than PRESENCE_ONLINE_SECONDS to become AFK
-    time.sleep(4)
+    # wait slightly longer than the enforced minimum AFK_SECONDS to become AFK
+    # The server enforces a minimum AFK threshold (in test mode min is 1s,
+    # conftest sets AFK_SECONDS=3), so wait 6s here.
+    time.sleep(6)
     st2 = s.get(f"/presence/{user['id']}").json()['status']
     assert st2 in ('AFK', 'offline')
     # close tab

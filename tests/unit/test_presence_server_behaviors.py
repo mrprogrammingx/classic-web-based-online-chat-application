@@ -1,5 +1,14 @@
 import time
+import os
 import uuid
+import pytest
+
+# Time-based tests only work when the server was started with a small AFK threshold.
+_server_afk = max(int(os.getenv('AFK_SECONDS', '60')), 5)
+_needs_fast_afk = pytest.mark.skipif(
+    _server_afk > 10,
+    reason=f'time-based AFK test requires AFK_SECONDS ≤ 10 (got {_server_afk})',
+)
 
 
 def parse_jwt_no_verify(token: str):
@@ -41,6 +50,7 @@ def test_heartbeat_accepts_cookie_without_jti(client):
     assert st == 'online'
 
 
+@_needs_fast_afk
 def test_presence_online_seconds_minimum_enforced(client):
     """Verify that the server enforces a minimum presence timeout (>= 5s).
     We send a heartbeat, wait slightly less than 5s (4s) and expect the user to still be 'online'.

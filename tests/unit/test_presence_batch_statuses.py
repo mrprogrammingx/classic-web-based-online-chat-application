@@ -44,9 +44,9 @@ def test_batch_presence_online_afk_offline(client):
     jti_afk = payload2.get('jti')
     assert jti_afk
     tab_afk = 'tab-' + uuid.uuid4().hex[:8]
-    # compute a timestamp older than PRESENCE_ONLINE_SECONDS
-    cutoff = int(os.getenv('PRESENCE_ONLINE_SECONDS', '60'))
-    old_ts = int(time.time()) - (cutoff + 10)
+    # compute a timestamp older than AFK_SECONDS (use 120 s to be safe
+    # even when the server runs with the default 60 s AFK threshold)
+    old_ts = int(time.time()) - 120
     # write directly into the DB so we can simulate an AFK last_active
     from core.config import DB_PATH
     db_path = os.path.join(os.getcwd(), DB_PATH)

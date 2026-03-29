@@ -87,8 +87,11 @@ def test_admin_removal_and_unban_and_message_permissions(client):
     client.s.headers.update({'Authorization': f'Bearer {ta}'})
     pm2 = client.post(f'/rooms/{rid}/messages', json={'text': 'should fail'})
     assert pm2.status_code == 403
+    # GET /rooms/{id} now returns 200 with is_banned=True instead of 403,
+    # so the client JS can render a proper ban notice instead of an opaque error.
     ga = client.get(f'/rooms/{rid}')
-    assert ga.status_code == 403
+    assert ga.status_code == 200
+    assert ga.json()['room']['is_banned'] is True
 
     # owner unbans A
     client.s.headers.update({'Authorization': f'Bearer {owner_token}'})
