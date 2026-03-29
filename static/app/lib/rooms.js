@@ -340,10 +340,11 @@
       }
 
       // populate fields
-      const nameEl = document.getElementById('room-name'); const descEl = document.getElementById('room-description');
-      const visEl = document.getElementById('room-visibility'); const ownerEl = document.getElementById('room-owner');
-      const adminsEl = document.getElementById('room-admins'); const membersEl = document.getElementById('room-members'); const bannedEl = document.getElementById('room-banned');
-      const btnJoin = document.getElementById('btn-join-room'); const btnLeave = document.getElementById('btn-leave-room'); const btnManage = document.getElementById('btn-manage-room');
+  const nameEl = document.getElementById('room-name'); const descEl = document.getElementById('room-description');
+  const visEl = document.getElementById('room-visibility'); const ownerEl = document.getElementById('room-owner');
+  const adminsEl = document.getElementById('room-admins'); const membersEl = document.getElementById('room-members'); const bannedEl = document.getElementById('room-banned');
+  const btnJoin = document.getElementById('btn-join-room'); const btnLeave = document.getElementById('btn-leave-room'); const btnManage = document.getElementById('btn-manage-room');
+  const btnDelete = (document.getElementById && document.getElementById('btn-delete-room')) || null;
       nameEl.textContent = room.name || ('room' + room.id);
   descEl.textContent = room.description || '—';
       visEl.textContent = (room.visibility || 'public');
@@ -365,7 +366,7 @@
 
       // show/hide buttons based on membership/role
       try{ if(room.is_member){ btnJoin.style.display = 'none'; btnLeave.style.display = 'inline-flex'; } else { btnJoin.style.display = 'inline-flex'; btnLeave.style.display = 'none'; } }catch(e){}
-      try{ if(room.is_owner || room.is_admin){ btnManage.style.display = 'inline-flex'; } else { btnManage.style.display = 'none'; } }catch(e){}
+  try{ if(room.is_owner || room.is_admin){ btnManage.style.display = 'inline-flex'; if(btnDelete) btnDelete.style.display = 'inline-flex'; } else { btnManage.style.display = 'none'; if(btnDelete) btnDelete.style.display = 'none'; } }catch(e){}
 
       // attach handlers (remove prior handlers by replacing with new functions)
       if(btnJoin){ btnJoin.onclick = async ()=>{
