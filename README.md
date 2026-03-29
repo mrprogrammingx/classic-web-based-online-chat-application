@@ -547,12 +547,6 @@ mypy app.py --ignore-missing-imports
 
 ---
 
-## License
-
-This project is part of the HackTheWorkflow initiative.
-
----
-
 ## Support and Contributing
 
 For issues, questions, or contributions:
