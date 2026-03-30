@@ -67,25 +67,9 @@ jobs:
         run: |
           npm run test:playwright --if-present || true
 
-      - name: Upload Playwright artifacts on failure
+      - name: Show server logs on failure
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v5
-        with:
-          name: playwright-artifacts
-          path: |
-            test-logs/server.log
-            playwright-report/**
-            playwright-traces/**
-            playwright-screenshots/**
-            tests-results/**
+        run: |
+          echo "=== Server logs ===" 
+          cat test-logs/server.log 2>/dev/null || echo "No logs found"
 
-      - name: Upload Playwright artifacts on success
-        if: ${{ success() }}
-        uses: actions/upload-artifact@v5
-        with:
-          name: playwright-artifacts-success
-          path: |
-            playwright-report/**
-            playwright-traces/**
-            playwright-screenshots/**
-            test-results/**
