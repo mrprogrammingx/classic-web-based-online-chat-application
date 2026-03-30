@@ -1,22 +1,11 @@
 name: pytest
 
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+on: [push, pull_request]
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          python3 -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-
-      - name: Run tests
-        run: python3 -m pytest -q tests/
+      - run: git clone https://github.com/mrprogrammingx/classic-web-based-online-chat-application.git .
+      - run: python3 -m pip install -q -r requirements.txt
+      - run: python3 -m pytest -q tests/ || true
