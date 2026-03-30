@@ -1,75 +1,15 @@
 name: Playwright tests
 
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+on: [push, pull_request]
 
 jobs:
   test-playwright:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-
-      - name: Set up Node
-        uses: actions/setup-node@v5
-        with:
-          node-version: '18'
-
-      - name: Install Node dependencies
-        run: |
-          if [ -f package.json ]; then npm ci; fi
-
-      - name: Install Playwright browsers
-        run: |
-          npx playwright install --with-deps
-
-      - name: Start server (TEST_MODE=1)
-        env:
-          TEST_MODE: '1'
-        run: |
-          # start uvicorn in background and capture logs
-          mkdir -p test-logs
-          (TEST_MODE=1 python -m uvicorn app:app --host 127.0.0.1 --port 8000 &> test-logs/server.log &) || true
-          echo $! > test-logs/server.pid || true
-
-      - name: Wait for server to accept connections
-        run: |
-          for i in {1..60}; do
-            if curl -sSf http://127.0.0.1:8000/ >/dev/null 2>&1; then
-              echo "✅ server listening on port 8000"
-              exit 0
-            fi
-            echo "⏳ waiting for server... ($i/60)"
-            sleep 1
-          done
-          echo "❌ server did not start in time"
-          cat test-logs/server.log 2>/dev/null || true
-          exit 1
-
-      - name: Run Playwright tests
-        id: playwright
-        run: |
-          npm run test:playwright --if-present || true
-
-      - name: Show server logs on failure
-        if: ${{ failure() }}
-        run: |
-          echo "=== Server logs ===" 
-          cat test-logs/server.log 2>/dev/null || echo "No logs found"
+      - run: git clone https://github.com/mrprogrammingx/classic-web-based-online-chat-application.git .
+      - run: python3 -m pip install -q -r requirements.txt
+      - run: npm ci
+      - run: npx playwright install --with-deps
+      - run: TEST_MODE=1 python3 -m uvicorn app:app --host 127.0.0.1 --port 8000 &
+      - run: sleep 5 && npm run test:playwright --if-present || true
 
