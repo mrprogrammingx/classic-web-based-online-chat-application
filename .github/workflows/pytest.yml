@@ -6,26 +6,17 @@ on:
   pull_request:
     branches: [ main ]
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+      - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          python3 -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
 
       - name: Run tests
-        run: pytest -q tests/
+        run: python3 -m pytest -q tests/
