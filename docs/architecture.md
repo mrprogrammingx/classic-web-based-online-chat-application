@@ -253,10 +253,6 @@ Manage room modal (admins view recent messages, ban/unban):
 
 GIF demonstrations
 
-![Chat send GIF](./gif/chat-app.gif)
-
-![Presence change GIF](./gif/offilne-online-status-chat-app.gif)
-
 <figure align="center">
   <img src="./gif/chat-app.gif" alt="Chat send GIF" />
   <figcaption>Chat send — composing, attaching, and sending a message.</figcaption>
