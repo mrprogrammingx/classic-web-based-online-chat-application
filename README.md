@@ -1,5 +1,7 @@
 # Classic Web-Based Online Chat Application
 
+![App Screenshot](./docs/screenshots/home.png)
+
 A production-style web chat system built with **FastAPI + SQLite** supporting authentication, real-time presence, private messaging, file sharing, and moderation — designed for ~300 concurrent users.
 
 ✅ **Ready for Docker**: Fully containerized with `docker compose up`
