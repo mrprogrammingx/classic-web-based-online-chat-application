@@ -19,6 +19,11 @@ RUN pip install --upgrade pip && pip install --no-cache-dir -r /app/requirements
 # Copy project files
 COPY . /app
 
+# Copy entrypoint and make it executable
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 EXPOSE 8000
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
