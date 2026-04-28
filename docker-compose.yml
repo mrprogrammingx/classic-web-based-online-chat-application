@@ -15,6 +15,11 @@ services:
       ADMIN_PASS: "admin"
       AUTH_DB_PATH: /data/auth.db
       FILE_STORAGE_PATH: /data/uploads
+      # Number of uvicorn workers to run (entrypoint will append --workers
+      # to the uvicorn command unless --workers is already present or
+      # --reload is used). Do NOT use --reload in production because it
+      # makes uvicorn ignore workers; use --reload only during local dev.
+      UVICORN_WORKERS: "4"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000"]
