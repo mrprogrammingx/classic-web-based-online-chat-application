@@ -2,6 +2,8 @@
 
 ![App Screenshot](./docs/screenshots/home.png)
 
+For more screenshots and a short GIF demo of the UI, see [docs/architecture.md](./docs/architecture.md).
+
 A production-style web chat system built with **FastAPI + SQLite** supporting authentication, real-time presence, private messaging, file sharing, and moderation — designed for ~300 concurrent users.
 
 ✅ **Ready for Docker**: Fully containerized with `docker compose up`
