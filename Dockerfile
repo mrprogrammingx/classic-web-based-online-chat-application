@@ -23,6 +23,12 @@ COPY . /app
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
+# Create a non-root user 'app' to run the application. We keep the
+# creation lightweight and use a system user so it doesn't collide with
+# typical host UIDs. The entrypoint still runs as root so it can perform
+# initialization (DB init, chown), then drops privileges before exec.
+RUN groupadd -r app || true && useradd -r -g app -d /app -s /bin/sh app || true
+
 EXPOSE 8000
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

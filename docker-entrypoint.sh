@@ -132,4 +132,28 @@ if [ -n "${UVICORN_WORKERS:-}" ] && [ "${UVICORN_WORKERS}" -gt 1 ] 2>/dev/null; 
     fi
 fi
 
-exec "${cmd[@]}"
+# If running as root, ensure /data and /app are writable by the app user,
+# then drop privileges to a non-root 'app' user before exec. If the image
+# doesn't have the 'app' user, fall back to running as-is.
+if [ "$(id -u)" -eq 0 ]; then
+    echo "[entrypoint] running as root: fixing permissions on /data and /app"
+    # Attempt to chown; ignore failures but log them.
+    chown -R app:app /data 2>/dev/null || echo "[entrypoint] warning: failed to chown /data"
+    chown -R app:app /app 2>/dev/null || echo "[entrypoint] warning: failed to chown /app"
+    # If the 'app' user exists, use gosu if available, otherwise use su-exec or su -c.
+    if id -u app >/dev/null 2>&1; then
+        if command -v gosu >/dev/null 2>&1; then
+            exec gosu app "${cmd[@]}"
+        elif command -v su-exec >/dev/null 2>&1; then
+            exec su-exec app "${cmd[@]}"
+        else
+            # Fall back to su -c which may spawn a shell; safer to use 'su -s /bin/sh -c'.
+            exec su -s /bin/sh -c "${cmd[*]}" app
+        fi
+    else
+        echo "[entrypoint] 'app' user not found; running command as root"
+        exec "${cmd[@]}"
+    fi
+else
+    exec "${cmd[@]}"
+fi
