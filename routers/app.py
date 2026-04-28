@@ -135,8 +135,18 @@ async def startup():
 
 
 @app.get('/')
-async def root():
-    return RedirectResponse(url='/static/chat/index.html')
+async def root(request: Request):
+    """Root endpoint.
+
+    - If the client accepts HTML, redirect to the UI page.
+    - Otherwise return a small JSON payload indicating the app is running.
+    This gives a clear visible success for API/health checks while preserving
+    the browser redirect behavior.
+    """
+    accept = request.headers.get('accept', '') or ''
+    if 'text/html' in accept.lower():
+        return RedirectResponse(url='/static/chat/index.html')
+    return JSONResponse({'status': 'running'})
 
 # Authentication endpoints and test helpers
 
