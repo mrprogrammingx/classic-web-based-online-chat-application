@@ -59,3 +59,43 @@ GIF demos (included in `docs/gif`):
 	<img src="./docs/gif/offilne-online-status-chat-app.gif" alt="Presence status GIF" />
 	<figcaption>Presence change — shows online → AFK → offline transitions across tabs.</figcaption>
 </figure>
+
+## Quick start
+
+Use Docker for the easiest reproducible run. For a minimal local start, use the manual commands below.
+
+Docker (recommended)
+
+```bash
+# Build and run the app (DB/uploads are bind-mounted by the compose file)
+docker compose up --build
+```
+
+Manual (local)
+
+```bash
+# venv, deps, run
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app:app --reload --host 127.0.0.1 --port 8000
+```
+
+Notes
+
+- If you need test-only endpoints, set `TEST_MODE=1` in your environment before starting Docker or the server (e.g. `TEST_MODE=1 docker compose up --build`). Do not append `TEST_MODE=1` after `docker compose up` — that will be treated as a service name.
+- Keep `auth.db` and `uploads/` persisted on the host (or set `AUTH_DB_PATH`) to preserve data between runs.
+
+Note for contributors: consider installing the dev dependencies for local development and testing:
+```bash
+pip install -r requirements-dev.txt
+```
+
+Running tests
+
+```bash
+# Run unit tests (all under tests/unit)
+pytest -q tests/unit
+
+# Run the full test suite
+pytest -q
+```
