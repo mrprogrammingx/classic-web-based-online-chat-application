@@ -15,7 +15,10 @@ A production-style web chat system built with **FastAPI + SQLite** supporting au
 git clone https://github.com/mrprogrammingx/classic-web-based-online-chat-application.git
 cd classic-web-based-online-chat-application
 
-# Run with Docker Compose (single command!)
+# First time (or after code changes): build images and start
+docker compose up --build
+
+# Subsequent runs: faster start using cached images
 docker compose up
 ```
 
