@@ -22,7 +22,10 @@ services:
       UVICORN_WORKERS: "4"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000"]
+      # Use Python to perform the HTTP healthcheck so the container does
+      # not require an external binary like curl or wget. The one-liner
+      # exits with status 0 for 2xx responses and non-zero otherwise.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; r=urllib.request.urlopen('http://localhost:8000'); code=r.getcode(); sys.exit(0 if code//100==2 else 1)"]
       interval: 10s
       timeout: 5s
       retries: 5
