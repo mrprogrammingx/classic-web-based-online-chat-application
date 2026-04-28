@@ -1,3 +1,5 @@
+version: "3.8"
+
 services:
   web:
     build:
@@ -7,12 +9,20 @@ services:
       - "8000:8000"
     environment:
       TEST_MODE: "1"
+      # Default admin credentials for local/dev Docker runs. These can be
+      # overridden at deploy time or removed for production.
+      ADMIN_USER: "admin"
+      ADMIN_PASS: "admin"
+      AUTH_DB_PATH: /data/auth.db
+      FILE_STORAGE_PATH: /data/uploads
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000"]
       interval: 10s
       timeout: 5s
       retries: 5
-    command: uvicorn app:app --host 0.0.0.0 --port 8000
     volumes:
-      - ./auth.db:/app/auth.db
+      - chat_data:/data
+
+volumes:
+  chat_data:

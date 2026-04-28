@@ -23,6 +23,7 @@ from core.utils import (
 from core.config import SESSION_COOKIE_NAME, SESSION_DEFAULT_EXPIRES_SECONDS
 from routers import register_routers
 import os
+from init_admin import create_admin
 
 app = FastAPI()
 
@@ -126,6 +127,11 @@ async def custom_404_handler(request: Request, exc: StarletteHTTPException):
 @app.on_event('startup')
 async def startup():
     await init_db()
+    try:
+        await create_admin()
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception('startup: create_admin failed')
 
 
 @app.get('/')

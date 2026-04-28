@@ -43,3 +43,10 @@ jobs:
           else
             echo 'pytest not installed; skipping unit tests'
           fi
+      - name: Run integration tests (startup admin)
+        run: |
+          if command -v pytest >/dev/null 2>&1; then
+            pytest -q tests/integration/test_startup_admin.py || (echo 'Integration test failed' && exit 1)
+          else
+            echo 'pytest not installed; skipping integration test'
+          fi

@@ -99,3 +99,13 @@ pytest -q tests/unit
 # Run the full test suite
 pytest -q
 ```
+
+Default Admin
+
+When the app starts (Docker Compose or normal startup), it will ensure a default admin exists. The default credentials are provided via environment variables and default to:
+
+- Username: admin
+- Password: admin
+
+You can override these with `ADMIN_USER` and `ADMIN_PASS` environment variables.
+
