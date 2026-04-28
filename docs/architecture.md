@@ -397,6 +397,8 @@ npx playwright test
 #### Testing
 - `TEST_MODE=1`: Enables test-only endpoints like `POST /_test/create_user`
 
+Note: the repository's `docker-compose.yml` sets `TEST_MODE=1` for the `web` service to make local dev and CI easier; some integration helpers and unit tests assume this value when they call test-only endpoints. If you run the server manually for development, set `TEST_MODE=1` when you need those test endpoints available.
+
 ### Example Configuration
 
 Use environment variables with sensible defaults so scripts and CI can override them without editing files.
@@ -677,3 +679,44 @@ For issues, questions, or contributions:
 - Review test files for usage examples
 - Examine endpoint implementations in `routers/` directory
 - Check configuration options in `core/config.py`
+
+---
+
+## Operational & Deployment Notes
+
+This section collects practical runbook items and deployment notes that help operate the service in development, CI and production-like environments.
+
+- Running in containers
+  - The included `docker-compose.yml` builds the main image and bind-mounts `./auth.db` into the container at `/app/auth.db`. That makes the SQLite file persistent on the host by default. The compose file also sets `TEST_MODE=1` for convenience in dev/CI.
+  - For local development use a compose override (e.g. `docker-compose.dev.yml`) to bind-mount the repo so edits are reflected without rebuilding the image.
+
+- Dev image vs production image
+  - Keep the main `Dockerfile` minimal and lean (runtime deps only). To run linters/tests inside a container, prefer one-off containers that install dev deps on-demand, or build a separate `Dockerfile.dev` that installs `requirements-dev.txt`.
+  - Example one-off command to run tests without changing images:
+    ```bash
+    docker compose run --rm web sh -c "pip install -r requirements-dev.txt && pytest -q"
+    ```
+
+- Backups & DB maintenance
+  - Back up `auth.db` regularly (daily or more often depending on write volume). A simple cron job can copy & rotate backups.
+  - Periodically run `VACUUM` in a maintenance window and verify backups with `PRAGMA integrity_check;` on a copy.
+
+- CI / Testing
+  - CI should install both `requirements.txt` and `requirements-dev.txt` for running pytest/flake8/mypy. The repository’s `basic-smoke.yml` workflow includes those steps and runs `pytest -q tests/unit`.
+  - Playwright E2E requires Node and browser binaries; CI jobs running E2E should install Playwright (e.g. `npx playwright install`) and start the server (with `TEST_MODE=1` if needed) before running tests.
+
+- Security & Secrets
+  - Do not commit secrets. Use environment variables or secret stores in CI and production.
+  - For production behind a reverse proxy, terminate TLS at the proxy and set secure cookie flags and appropriate `SameSite` policy.
+
+- Scaling & Observability
+  - SQLite is fine for small deployments. For horizontal scaling or heavy write loads, migrate to Postgres/MySQL and use a message broker for presence/events.
+  - Ship logs to a centralized collector and add basic metrics (request counts, latencies, presence counts) to monitor the service.
+
+- Maintenance runbook (brief)
+  - Daily: run backups and rotate old backups
+  - Weekly: compact DB with `VACUUM` if necessary
+  - Emergency: restore most recent backup, run `PRAGMA integrity_check;`, and check server logs
+
+
+*** End of Operational & Deployment Notes
