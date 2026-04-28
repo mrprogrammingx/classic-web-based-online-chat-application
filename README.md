@@ -50,6 +50,12 @@ These features make the application suitable as a reference implementation for t
 See full architecture → [docs/architecture.md](./docs/architecture.md)
 GIF demos (included in `docs/gif`):
 
-![Send message GIF](./docs/gif/chat-app.gif)
+<figure align="center">
+	<img src="./docs/gif/chat-app.gif" alt="Send message GIF" />
+	<figcaption>Send a message — quick demo of composing and sending text and attachments.</figcaption>
+</figure>
 
-![Presence status GIF](./docs/gif/offilne-online-status-chat-app.gif)
+<figure align="center">
+	<img src="./docs/gif/offilne-online-status-chat-app.gif" alt="Presence status GIF" />
+	<figcaption>Presence change — shows online → AFK → offline transitions across tabs.</figcaption>
+</figure>

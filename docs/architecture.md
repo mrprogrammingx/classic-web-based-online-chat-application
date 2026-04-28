@@ -257,6 +257,16 @@ GIF demonstrations
 
 ![Presence change GIF](./gif/offilne-online-status-chat-app.gif)
 
+<figure align="center">
+  <img src="./gif/chat-app.gif" alt="Chat send GIF" />
+  <figcaption>Chat send — composing, attaching, and sending a message.</figcaption>
+</figure>
+
+<figure align="center">
+  <img src="./gif/offilne-online-status-chat-app.gif" alt="Presence change GIF" />
+  <figcaption>Presence demo — online, AFK, and offline transitions across tabs.</figcaption>
+</figure>
+
 ---
 
 ## Technical Stack
