@@ -3,6 +3,12 @@ import aiosqlite
 import db as db_mod
 DB = db_mod.DB
 from core.utils import require_auth
+import logging
+from core.logging_setup import ensure_file_handler
+
+# module logger
+logger = logging.getLogger(__name__)
+ensure_file_handler(logger)
 
 router = APIRouter()
 
@@ -37,9 +43,13 @@ async def search_users(q: str = Query(''), user=Depends(require_auth)):
     pattern = q.lower() + '%'
     async with aiosqlite.connect(DB) as db:
         cur = await db.execute(
-            "SELECT id, username, email FROM users WHERE lower(username) LIKE ? LIMIT 10",
+            "SELECT id, username, email FROM users WHERE lower(username) LIKE ? ORDER BY created_at DESC LIMIT 10",
             (pattern,)
         )
         rows = await cur.fetchall()
+        try:
+            logger.info('users.search: pattern=%s rows=%s', pattern, len(rows))
+        except Exception:
+            pass
         users = [{'id': r[0], 'username': r[1], 'email': r[2]} for r in rows]
         return {'users': users}
