@@ -273,6 +273,41 @@ uvicorn app:app --reload --port 8000
 uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
+### Docker
+
+Run the app with Docker Compose from the repository root. This will build the image and start the web service on port 8000 by default.
+
+Build and start:
+```bash
+docker compose up --build
+# visit: http://localhost:8000
+```
+
+
+
+Developer workflow (mount host files into container)
+
+For local development you may want the container to use your host files so edits are reflected immediately. Create a `docker-compose.dev.yml` with a bind mount and use the override when bringing the stack up:
+
+```yaml
+version: '3.8'
+services:
+  web:
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      TEST_MODE: "1"
+    command: uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Bring up the dev stack:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+
 ### Testing
 
 **Unit and integration tests**:
