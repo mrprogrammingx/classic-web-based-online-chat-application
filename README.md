@@ -246,7 +246,8 @@ Full interactive API documentation: http://localhost:8000/docs (Swagger UI)
 
 For production deployments beyond Docker Compose:
 
-1. **Security**n   - Set `JWT_SECRET` to a secure random string
+1. **Security**
+   - Set `JWT_SECRET` to a secure random string
    - Use environment-based credentials (never hardcode)
    - Enable HTTPS/SSL with reverse proxy (nginx/Apache)
 
