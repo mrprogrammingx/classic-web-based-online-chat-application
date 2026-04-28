@@ -5,10 +5,11 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 # Install system deps required by some packages (adjust as needed)
+# Use netcat-openbsd (netcat virtual package has no candidate in some suites)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
-    netcat \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python deps

@@ -472,11 +472,37 @@ const requestByUsernameBtn = document.getElementById('request-by-username'); if(
     document.getElementById('friend-message-input').value = '';
     showStatus('Friend request sent successfully! ✓');
     showToast('Friend request sent to ' + uname, 'success') 
-  } else { 
-    const body = await r.json().catch(()=>({error:'Unknown error'}));
-    const errMsg = body.detail || body.error || JSON.stringify(body);
-    showStatus('Failed: ' + errMsg); 
-    showToast('Failed: ' + errMsg, 'error') 
+  } else {
+    // Prefer mapping common HTTP statuses to friendly messages first
+    if(r.status === 401){
+      showStatus('Failed: Authentication required. Please log in.');
+      showToast('Failed: Authentication required. Please log in.', 'error');
+    } else if(r.status === 404){
+      showStatus('Failed: User not found');
+      showToast('Failed: User not found', 'error');
+    } else if(r.status === 409){
+      // Conflict - try to parse JSON or text for a helpful message
+      let msg = 'Conflict (already friends or request pending)';
+      try{ const body = await r.json(); msg = body && (body.detail || body.error) ? (body.detail || body.error) : JSON.stringify(body); }catch(_){ try{ const text = await r.text(); msg = text ? text.replace(/\s+/g, ' ').slice(0,200) : msg; }catch(e){} }
+      showStatus('Failed: ' + msg);
+      showToast('Failed: ' + msg, 'error');
+    } else {
+      // Generic handling: prefer JSON error body, otherwise use trimmed text
+      let errMsg = 'Unknown error';
+      try{
+        const body = await r.json();
+        errMsg = body && (body.detail || body.error) ? (body.detail || body.error) : JSON.stringify(body);
+      }catch(_){
+        try{
+          const text = await r.text();
+          errMsg = text ? text.replace(/\s+/g, ' ').slice(0,200) : ('HTTP ' + r.status);
+        }catch(e){
+          errMsg = 'HTTP ' + r.status;
+        }
+      }
+      showStatus('Failed: ' + errMsg);
+      showToast('Failed: ' + errMsg, 'error');
+    }
   }
   }catch(e){ showToast('Error sending request: ' + e.message, 'error'); showStatus('Error: ' + e.message) }
   finally{ requestByUsernameBtn.disabled = false }

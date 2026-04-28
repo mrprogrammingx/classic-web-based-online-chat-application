@@ -65,7 +65,17 @@
         return;
       }
 
-      if(!data || !data.sessions) return sessionsList.innerHTML = '<li class="meta">No sessions found</li>';
+      // If fetchJSON fallback returned null (common when server responds non-200
+      // such as 401/403 for unauthenticated requests), show a friendly hint
+      // instead of leaving the UI stuck at "Loading…".
+      if(!data){
+        try{ sessionsList.innerHTML = '<li class="meta">Sign in to view sessions</li>'; }catch(_){ }
+        return;
+      }
+      if(!data.sessions || !Array.isArray(data.sessions) || data.sessions.length === 0){
+        try{ sessionsList.innerHTML = '<li class="meta">No sessions found</li>'; }catch(_){ }
+        return;
+      }
       sessionsList.innerHTML = '';
       data.sessions.forEach(s => {
         const li = document.createElement('li');

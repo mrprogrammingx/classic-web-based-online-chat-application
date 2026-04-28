@@ -244,3 +244,4 @@ test-results/
 /test-artifacts/
 test-artifacts/
 .venv-system/
+.DS_Store
