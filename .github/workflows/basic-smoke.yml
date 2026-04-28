@@ -1,0 +1,41 @@
+name: Basic smoke check
+
+on:
+  push:
+    branches: [ dockerize, dockerize/** ]
+  pull_request:
+    branches: [ dockerize ]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install requirements
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; else echo 'no requirements.txt found'; fi
+
+      - name: Check for dependency conflicts
+        run: |
+          # pip check returns non-zero when conflicts exist; we want a visible failure in that case
+          python -m pip check
+
+      - name: Verify Python syntax
+        run: |
+          # Compile the repository to ensure there are no syntax / parse errors
+          python -m compileall -q .
+
+      - name: Quick smoke (optional)
+        run: |
+          # This step is intentionally minimal. Running the full test suite or E2E
+          # may not be appropriate for all CI contexts. If you want to enable
+          # unit tests here, consider running a small, stable subset.
+          echo "Smoke checks complete"

@@ -399,17 +399,64 @@ npx playwright test
 
 ### Example Configuration
 
-```bash
-# Production setup
-export JWT_SECRET="your-secure-secret-here"
-export AUTH_DB_PATH="/var/lib/chat/auth.db"
-export FILE_STORAGE_PATH="/var/lib/chat/uploads"
-export MAX_FILE_SIZE_MB=50
-export MAX_IMAGE_SIZE_MB=10
-export PRESENCE_ONLINE_SECONDS=60
+Use environment variables with sensible defaults so scripts and CI can override them without editing files.
 
+```bash
+# Production (safer): prefer parameter expansion so a missing variable falls back to a sensible default
+export JWT_SECRET="${JWT_SECRET:-your-secure-secret-here}"
+export AUTH_DB_PATH="${AUTH_DB_PATH:-/var/lib/chat/auth.db}"
+export FILE_STORAGE_PATH="${FILE_STORAGE_PATH:-/var/lib/chat/uploads}"
+export MAX_FILE_SIZE_MB="${MAX_FILE_SIZE_MB:-50}"
+export MAX_IMAGE_SIZE_MB="${MAX_IMAGE_SIZE_MB:-10}"
+export PRESENCE_ONLINE_SECONDS="${PRESENCE_ONLINE_SECONDS:-60}"
+
+# Start the app bound to all interfaces (recommended inside containers / servers)
 uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4
 ```
+
+If you run the project via Docker Compose we recommend mounting the database and uploads to the host so data persists across container restarts. Example service snippet:
+
+```yaml
+services:
+  web:
+    image: your-image-name
+    ports:
+      - "8000:8000"   # expose port to the host
+    environment:
+      - AUTH_DB_PATH=/app/auth.db
+    volumes:
+      - ./auth.db:/app/auth.db     # persist SQLite file on the host
+      - ./uploads:/app/uploads     # persist uploads
+    command: uvicorn app:app --host 0.0.0.0 --port 8000
+```
+
+Common mistakes (quick checklist)
+
+- Hardcoded paths in code or docs
+  - Problem: examples like `export AUTH_DB_PATH="/var/lib/chat/auth.db"` are fine as examples but keep code flexible.
+  - Fix: prefer environment variables and parameter expansion (`${AUTH_DB_PATH:-./auth.db}`) and document the default in `core/config.py`.
+
+- Missing or unpinned dependencies
+  - Problem: running on another machine fails when `requirements.txt` is absent or incompatible.
+  - Fix: keep `requirements.txt` updated and use a lockfile for reproducible builds (Docker uses `requirements.txt` already).
+
+- App runs only on your machine (binding to localhost)
+  - Problem: using `127.0.0.1`/`localhost` inside containers or CI can make services unreachable.
+  - Fix: run production/service commands with `--host 0.0.0.0` (the Dockerfile and docker-compose already use this). For local dev, `127.0.0.1` is fine.
+
+- Forgot to expose or map the port in Docker
+  - Problem: container is listening but not reachable from host.
+  - Fix: ensure `EXPOSE 8000` in Dockerfile and `ports: - "8000:8000"` in `docker-compose.yml` (present in this repo).
+
+- Using `localhost` incorrectly in integration tests or scripts
+  - Problem: some tests and helper scripts use `http://127.0.0.1:8000` which is correct for local runs but may fail inside containers or remote CI jobs.
+  - Fix: make base URL configurable via `PLAYWRIGHT_BASE`/`BASE` env vars (the test helpers already do). Prefer `127.0.0.1` in test code and `0.0.0.0` for server binding.
+
+Small operational notes:
+
+- The app looks up `AUTH_DB_PATH` via `core.config.DB_PATH` (defaults to `./auth.db`). When running inside Docker we mount `./auth.db` into `/app/auth.db` and set `AUTH_DB_PATH=/app/auth.db` in the container environment so the app and host scripts operate on the same file.
+- Do not commit virtualenv directories (`.venv`, `.venv-system`) — they are ignored in `.gitignore`. Keep `requirements.txt` in sync with what Docker installs.
+
 
 ---
 
