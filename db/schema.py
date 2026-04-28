@@ -139,6 +139,12 @@ async def init_db():
             await db.commit()
         except Exception:
             pass
+        # index on created_at helps queries that order by recently created users
+        try:
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_users_created_at ON users(created_at);")
+            await db.commit()
+        except Exception:
+            pass
         # run migrations for existing DB: add columns to sessions if missing
         cur = await db.execute("PRAGMA table_info('sessions')")
         cols = await cur.fetchall()

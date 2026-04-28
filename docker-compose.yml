@@ -1,0 +1,36 @@
+version: "3.8"
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      TEST_MODE: "1"
+      # Default admin credentials for local/dev Docker runs. These can be
+      # overridden at deploy time or removed for production.
+      ADMIN_USER: "admin"
+      ADMIN_PASS: "admin"
+      AUTH_DB_PATH: /data/auth.db
+      FILE_STORAGE_PATH: /data/uploads
+      # Number of uvicorn workers to run (entrypoint will append --workers
+      # to the uvicorn command unless --workers is already present or
+      # --reload is used). Do NOT use --reload in production because it
+      # makes uvicorn ignore workers; use --reload only during local dev.
+      UVICORN_WORKERS: "4"
+    restart: unless-stopped
+    healthcheck:
+      # Use Python to perform the HTTP healthcheck so the container does
+      # not require an external binary like curl or wget. The one-liner
+      # exits with status 0 for 2xx responses and non-zero otherwise.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; r=urllib.request.urlopen('http://localhost:8000'); code=r.getcode(); sys.exit(0 if code//100==2 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - chat_data:/data
+
+volumes:
+  chat_data:

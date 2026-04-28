@@ -1,0 +1,52 @@
+name: Basic smoke check
+
+on:
+  push:
+    branches: [ dockerize, dockerize/** ]
+  pull_request:
+    branches: [ dockerize ]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install requirements
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; else echo 'no requirements.txt found'; fi
+          # Install dev dependencies when present (linters, pytest, etc.)
+          if [ -f requirements-dev.txt ]; then pip install --no-cache-dir -r requirements-dev.txt; else echo 'no requirements-dev.txt found'; fi
+
+      - name: Check for dependency conflicts
+        run: |
+          # pip check returns non-zero when conflicts exist; we want a visible failure in that case
+          python -m pip check
+
+      - name: Verify Python syntax
+        run: |
+          # Compile the repository to ensure there are no syntax / parse errors
+          python -m compileall -q .
+
+      - name: Run unit tests
+        run: |
+          # Run unit tests if pytest is available; otherwise skip
+          if command -v pytest >/dev/null 2>&1; then
+            pytest -q tests/unit || (echo 'Unit tests failed' && exit 1)
+          else
+            echo 'pytest not installed; skipping unit tests'
+          fi
+      - name: Run integration tests (startup admin)
+        run: |
+          if command -v pytest >/dev/null 2>&1; then
+            pytest -q tests/integration/test_startup_admin.py || (echo 'Integration test failed' && exit 1)
+          else
+            echo 'pytest not installed; skipping integration test'
+          fi

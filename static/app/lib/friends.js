@@ -71,14 +71,28 @@
       ul.innerHTML = '';
       for(const rq of data.requests){
         const li = document.createElement('li');
-        li.textContent = `${rq.username} (${rq.email}) - ${rq.message || ''}`;
-        const accept = document.createElement('button'); accept.textContent = 'Accept';
+        // meta: username, email and optional message in a dedicated block
+        const meta = document.createElement('div'); meta.className = 'meta';
+        meta.textContent = `${rq.username} (${rq.email})` + (rq.message ? ' — ' + rq.message : '');
+
+        // actions container: buttons will flow/wrap inside this container
+        const actions = document.createElement('div'); actions.className = 'req-actions';
+
+        const accept = document.createElement('button'); accept.textContent = 'Accept'; accept.className = 'accept-btn'; accept.type = 'button';
         accept.onclick = async ()=>{ try{ accept.disabled = true; const r = await fetch(BASE + '/friends/requests/respond', {method:'POST', credentials: 'include', headers: window.authHeaders ? window.authHeaders('application/json') : {'Content-Type':'application/json'}, body: JSON.stringify({request_id: rq.id, action: 'accept'})}); if(r.status===200){ await loadIncomingRequests(); await loadFriends(); window.showStatus && window.showStatus('Accepted'); } else { const body = await r.json().catch(()=>null); window.showStatus && window.showStatus('Failed: ' + JSON.stringify(body)); window.showToast && window.showToast(JSON.stringify(body), 'error'); } }catch(e){ window.showToast && window.showToast('failed to accept', 'error') } finally{ accept.disabled = false } }
-        const reject = document.createElement('button'); reject.textContent = 'Reject';
+
+        const reject = document.createElement('button'); reject.textContent = 'Reject'; reject.className = 'reject-btn'; reject.type = 'button';
         reject.onclick = async ()=>{ try{ reject.disabled = true; const r = await fetch(BASE + '/friends/requests/respond', {method:'POST', credentials: 'include', headers: window.authHeaders ? window.authHeaders('application/json') : {'Content-Type':'application/json'}, body: JSON.stringify({request_id: rq.id, action: 'reject'})}); if(r.status===200) await loadIncomingRequests(); else { const body = await r.json().catch(()=>null); window.showStatus && window.showStatus('Failed: ' + JSON.stringify(body)); window.showToast && window.showToast(JSON.stringify(body), 'error'); } }catch(e){ window.showToast && window.showToast('failed to reject', 'error') } finally{ reject.disabled = false } }
-        const ban = document.createElement('button'); ban.textContent = 'Ban';
+
+        const ban = document.createElement('button'); ban.textContent = 'Ban'; ban.className = 'ban-btn'; ban.type = 'button';
         ban.onclick = async ()=>{ try{ const ok = await (window.showModal ? window.showModal({title: 'Ban user', body: 'Ban this user? This action cannot be undone.', confirmText: 'Ban', cancelText: 'Keep'}) : Promise.resolve(confirm('Ban this user?'))); if(!ok) return; ban.disabled = true; const r = await fetch(BASE + '/ban', {method:'POST', credentials: 'include', headers: window.authHeaders ? window.authHeaders('application/json') : {'Content-Type':'application/json'}, body: JSON.stringify({banned_id: rq.from_id})}); if(r.status===200){ await loadIncomingRequests(); await loadFriends(); window.showStatus && window.showStatus('Banned'); } else { const body = await r.json().catch(()=>null); window.showStatus && window.showStatus('Failed: ' + JSON.stringify(body)); window.showToast && window.showToast(JSON.stringify(body), 'error'); } }catch(e){ window.showToast && window.showToast('failed to ban', 'error') } finally{ ban.disabled = false } }
-        li.appendChild(accept); li.appendChild(reject); li.appendChild(ban);
+
+        actions.appendChild(accept);
+        actions.appendChild(reject);
+        actions.appendChild(ban);
+
+        li.appendChild(meta);
+        li.appendChild(actions);
         ul.appendChild(li);
       }
     }catch(e){ console.warn('failed to load incoming requests', e) }

@@ -6,10 +6,39 @@ jobs:
   test-playwright:
     runs-on: ubuntu-latest
     steps:
-      - run: git clone https://github.com/mrprogrammingx/classic-web-based-online-chat-application.git .
-      - run: python3 -m pip install -q -r requirements.txt
-      - run: npm ci
-      - run: npx playwright install --with-deps
-      - run: TEST_MODE=1 python3 -m uvicorn app:app --host 127.0.0.1 --port 8000 &
-      - run: sleep 5 && npm run test:playwright --if-present || true
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Python dependencies
+        run: python3 -m pip install -q -r requirements.txt
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Start application (background)
+        run: TEST_MODE=1 python3 -m uvicorn app:app --host 127.0.0.1 --port 8000 &
+
+      - name: Wait for app to be ready and run Playwright tests
+        run: |
+          for i in {1..30}; do
+            if nc -z 127.0.0.1 8000; then
+              echo "app is up"
+              break
+            fi
+            sleep 1
+          done
+          npm run test:playwright --if-present || true
 

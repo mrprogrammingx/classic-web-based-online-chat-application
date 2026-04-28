@@ -145,6 +145,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+auth_*.db
 
 # Ignore runtime uploaded files directory (tests and server write files here)
 uploads/
@@ -244,3 +245,4 @@ test-results/
 /test-artifacts/
 test-artifacts/
 .venv-system/
+.DS_Store

@@ -1,6 +1,6 @@
 /* Simple responsive chat layout */
 :root{
-  --sidebar-width:260px;
+  --sidebar-width:350px;
   --topbar-height:56px;
   --bg:#f6f7fb;
   --muted:#9aa3b2;
@@ -76,15 +76,15 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 .rooms.compacted ul{max-height:48px;overflow:hidden}
 .messages-area{flex:1;display:flex;flex-direction:column;position:relative}
 .messages-header{padding:12px;border-bottom:1px solid #eef2f7;background:linear-gradient(90deg,#fff, #fbfdff)}
-.messages{flex:1;padding:16px;overflow:auto;background:linear-gradient(180deg,#fbfdff,#f6f7fb)}
-.message{max-width:72%;padding:12px 14px;margin-bottom:12px;border-radius:14px;background:#fff;box-shadow:0 6px 18px rgba(15,23,36,0.06);border:1px solid rgba(15,23,36,0.03)}
-.message.me{margin-left:auto;background:linear-gradient(180deg,var(--accent), #1f7fdc);color:#fff;box-shadow:0 12px 30px rgba(31,127,220,0.08);border:1px solid rgba(0,0,0,0.04)}
+.messages{flex:1;padding:16px;overflow:auto;background:linear-gradient(180deg,#fbfdff,#f6f7fb);display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.message{position:relative;display:inline-block;max-width:min(48ch,70%);padding:14px 18px;margin:0;border-radius:28px;background:#fff;box-shadow:0 10px 28px rgba(15,23,36,0.05);border:1px solid rgba(15,23,36,0.04);transition:transform 160ms ease, box-shadow 160ms ease;white-space:normal;word-break:break-word;overflow-wrap:anywhere}
+.message.me{position:relative;align-self:flex-end;background:linear-gradient(180deg,var(--accent), #1f7fdc);color:#fff;box-shadow:0 16px 36px rgba(31,127,220,0.09);border:1px solid rgba(0,0,0,0.04);border-radius:28px}
 
 /* Badge for messages authored by the signed-in user */
 .you-badge{background:#eef7ff;color:var(--accent);padding:2px 6px;border-radius:999px;font-size:12px;margin-left:8px;border:1px solid rgba(43,144,255,0.08);font-weight:700}
 
 /* Align messages: own messages on right, others on left (already handled by .message.me margin-left:auto). Ensure meta content aligns with message alignment */
-.message .meta{display:flex;align-items:center;gap:8px}
+.message .meta{display:flex;align-items:center;gap:8px;padding-bottom:6px}
 .message.me .meta{justify-content:flex-end}
 .message:not(.me) .meta{justify-content:flex-start}
 
@@ -97,7 +97,27 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 .message.me .you-badge{background:rgba(255,255,255,0.18);color:#03203a;border-color:rgba(255,255,255,0.06);font-weight:800;padding:3px 7px}
 
 /* message avatar: small circle with initial. Show on own messages (right) and hide for others to reduce visual noise */
-.msg-avatar{width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;margin-right:8px;background:#e6f0ff;color:var(--accent);border:1px solid rgba(43,144,255,0.08)}
+.msg-avatar{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;margin-right:10px;background:#e6f0ff;color:var(--accent);border:1px solid rgba(43,144,255,0.08);box-shadow:0 6px 18px rgba(15,23,36,0.04)}
+
+/* Message action buttons (Edit / Delete) */
+.msg-actions{margin-top:10px;display:flex;gap:8px}
+.msg-actions .msg-edit, .msg-actions .msg-delete{padding:6px 12px;border-radius:999px;border:1px solid transparent;background:transparent;cursor:pointer;font-weight:600;font-size:13px}
+.msg-actions .msg-edit{color:var(--accent);background:linear-gradient(180deg, rgba(43,144,255,0.06), rgba(43,144,255,0.03));border-color:rgba(43,144,255,0.08)}
+.msg-actions .msg-edit:hover{background:linear-gradient(180deg, rgba(43,144,255,0.11), rgba(43,144,255,0.05));transform:translateY(-1px)}
+.msg-actions .msg-delete{color:#dc2626;background:linear-gradient(180deg, rgba(220,38,38,0.04), rgba(220,38,38,0.02));border-color:rgba(220,38,38,0.08)}
+.msg-actions .msg-delete:hover{background:linear-gradient(180deg, rgba(220,38,38,0.08), rgba(220,38,38,0.03));transform:translateY(-1px)}
+.msg-actions .msg-edit[disabled], .msg-actions .msg-delete[disabled]{opacity:0.5;cursor:not-allowed;transform:none}
+
+/* subtle hover lift to make messages feel tactile */
+.message:hover{transform:translateY(-4px);box-shadow:0 22px 50px rgba(15,23,36,0.08)}
+
+/* slightly tighter body spacing */
+.message .body{line-height:1.45;font-size:15px;color:#1f2937}
+.message.me .body{color:rgba(255,255,255,0.98)}
+
+/* Reduce visual noise for inline link-style buttons elsewhere */
+.btn.btn-link{background:transparent;border:none;padding:6px 8px;color:var(--muted);font-weight:600}
+.btn.btn-link:hover{color:var(--accent);background:rgba(43,144,255,0.04);border-radius:6px}
 .message.me .msg-avatar{margin-left:8px;margin-right:0;background:rgba(255,255,255,0.18);color:#fff;border-color:rgba(255,255,255,0.08);box-shadow:0 6px 18px rgba(31,127,220,0.06)}
 /* show avatar for other users as a subtle muted circle on the left */
 .message:not(.me) .msg-avatar{display:inline-flex;margin-right:8px;background:#f1f5fb;color:#2b3b4a;border-color:transparent;box-shadow:0 4px 10px rgba(15,23,36,0.04)}
@@ -107,6 +127,22 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 
 /* ensure body text in .me messages remains readable */
 .message.me .body{color:rgba(255,255,255,0.95)}
+/* bubble tails for left (other) and right (me) messages */
+.message::after{content:'';position:absolute;width:14px;height:14px;transform:rotate(45deg);border-radius:3px}
+.message:not(.me)::after{left:-6px;bottom:12px;background:#fff;border-right:1px solid rgba(15,23,36,0.04);border-bottom:1px solid rgba(15,23,36,0.03)}
+.message.me::after{right:-6px;bottom:12px;background:linear-gradient(180deg,var(--accent), #1f7fdc);border-right:1px solid rgba(0,0,0,0.04);border-bottom:1px solid rgba(0,0,0,0.02)}
+
+/* Ensure the tail does not overflow on very narrow screens */
+@media (max-width:420px){
+  .message::after{display:none}
+  .message{max-width:100%}
+}
+
+/* Slightly lift messages on hover but keep subtle */
+.message:hover{transform:translateY(-3px);box-shadow:0 22px 48px rgba(15,23,36,0.07)}
+
+/* spacing tweaks */
+.message .body{line-height:1.46;font-size:15px;color:#111827}
 /* pending placeholder styling */
 .message.pending{opacity:0.85;border:1px dashed rgba(0,0,0,0.06);position:relative}
 .message.pending .controls{position:absolute;right:8px;top:8px;display:flex;gap:6px}
@@ -117,7 +153,23 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 .composer{display:flex;flex-direction:column;padding:10px;border-top:1px solid #e6e9ef;background:#fff}
 .composer-controls{display:flex;gap:8px;margin-bottom:8px;align-items:center}
 .emoji-btn{background:#fff;border:1px solid #e6e9ef;padding:6px 8px;border-radius:6px;cursor:pointer}
-.file-input{display:inline-block}
+
+/* emoji picker styles */
+.emoji-grid{display:grid;grid-template-columns:repeat(8,28px);gap:8px;padding:8px}
+.emoji-item{background:transparent;border:none;padding:6px;cursor:pointer;font-size:18px}
+.file-input{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:10px;border:1px solid rgba(15,23,36,0.06);background:#fff;color:var(--muted);font-weight:600;cursor:pointer;transition:all 160ms ease;min-height:36px}
+.file-input:hover{box-shadow:0 8px 26px rgba(15,23,36,0.06);transform:translateY(-1px)}
+.file-input:focus{outline:3px solid rgba(43,144,255,0.12);outline-offset:2px}
+
+/* style the native file button (modern and webkit fallback) */
+input[type="file"]::file-selector-button, input[type="file"]::-webkit-file-upload-button{
+  padding:8px 12px;border-radius:8px;border:none;background:linear-gradient(90deg,var(--accent),#1f7fdc);color:#fff;font-weight:700;cursor:pointer;margin-right:8px;transition:all 140ms ease
+}
+input[type="file"]::file-selector-button:hover, input[type="file"]::-webkit-file-upload-button:hover{transform:translateY(-1px);filter:brightness(1.03)}
+input[type="file"]::file-selector-button:active, input[type="file"]::-webkit-file-upload-button:active{transform:translateY(0)}
+
+/* make the filename text area align and overflow nicely */
+input[type="file"]{font-size:13px;color:#334155}
 .composer textarea{flex:1;padding:8px;border:1px solid #e6e9ef;border-radius:8px;resize:none;margin-bottom:8px}
 .composer-actions{display:flex;justify-content:flex-end}
 .composer-actions button{padding:10px 14px;border:none;background:var(--accent);color:#fff;border-radius:8px}
@@ -154,7 +206,8 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 .reply-preview button{margin-left:auto;background:transparent;border:none;font-size:14px;cursor:pointer}
 
 /* emoji picker */
-.emoji-picker{position:absolute;bottom:72px;left:12px;background:#fff;border:1px solid #e6e9ef;padding:8px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.08);display:none;z-index:50}
+.emoji-picker{position:absolute;bottom:140px;left:12px;background:#fff;border:1px solid #e6e9ef;padding:8px;border-radius:10px;box-shadow:0 18px 48px rgba(15,23,36,0.12);display:none;z-index:120}
+.emoji-picker{transform-origin:bottom left}
 .emoji-picker .emoji-grid{display:grid;grid-template-columns:repeat(8,28px);gap:6px}
 .emoji-picker button{background:transparent;border:none;font-size:18px;cursor:pointer}
 
@@ -163,7 +216,7 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 
 /* attachment preview in message */
 .attachment{margin-top:8px}
-.attachment img{max-width:200px;border-radius:8px;display:block}
+.attachment img{max-width:200px;border-radius:14px;display:block}
 .attachment .file-link{display:inline-block;background:#f1f5fb;padding:6px 8px;border-radius:6px}
 .attachment-progress{display:flex;align-items:center;gap:8px;margin:8px 0}
 .attachment-progress progress{width:160px}
@@ -260,6 +313,52 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
   opacity:0.6;
   cursor:not-allowed;
   transform:none;
+}
+
+/* Incoming request action buttons (accept/reject/ban) */
+.accept-btn, .reject-btn, #incoming-requests .ban-btn{
+  padding:8px 12px;
+  font-size:13px;
+  border-radius:8px;
+  border:1px solid transparent;
+  cursor:pointer;
+  margin-left:6px;
+  font-weight:600;
+}
+.accept-btn{ background: #10b981; color: #fff; border-color: #34d399 }
+.accept-btn:hover{ transform:translateY(-1px); box-shadow:0 6px 18px rgba(16,185,129,0.14) }
+.reject-btn{ background: #f3f4f6; color:#111; border-color:#e5e7eb }
+.reject-btn:hover{ background:#e11d48; color:#fff; border-color:#ef4444 }
+.reject-btn:disabled, .accept-btn:disabled, #incoming-requests .ban-btn:disabled{ opacity:0.6; cursor:not-allowed }
+
+/* Incoming requests list item tweaks */
+/* Incoming requests: stack meta above actions so text has full width */
+#incoming-requests li{
+  padding:12px;
+  border-radius:12px;
+  background:#fff;
+  margin-bottom:10px;
+  box-shadow:0 6px 18px rgba(15,23,36,0.04);
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+}
+#incoming-requests li .meta{
+  width:100%;
+  margin:0 0 10px 0;
+  color:#24303a;
+  font-weight:600;
+  white-space:normal;
+}
+
+/* Actions row: wrap buttons, two-per-line on narrow viewports */
+#incoming-requests .req-actions{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; width:100% }
+#incoming-requests .req-actions button{ flex: 1 1 calc(50% - 10px); min-width:120px }
+
+@media (min-width: 700px){
+  #incoming-requests li{ align-items:flex-start }
+  #incoming-requests .req-actions{ flex-wrap:nowrap }
+  #incoming-requests .req-actions button{ flex: 0 0 auto; min-width:unset }
 }
 
 /* small presence dot for home page */
@@ -398,6 +497,19 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 .pager{display:flex;gap:8px;align-items:center;margin-top:12px}
 .pager .pager-btn{background:transparent;border:1px solid #e6eef9;padding:6px 10px;border-radius:8px;cursor:pointer}
 .pager .pager-btn:hover{background:#f7fbff;border-color:rgba(43,144,255,0.06);transform:translateY(-1px)}
+
+/* Welcome/messages box styling for home page (moved from inline home.html) */
+.messages {
+  background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(248,250,255,0.96));
+  border: 1px solid rgba(10,30,60,0.04);
+  padding: 20px 22px;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(12,34,60,0.06);
+  margin: 12px 0;
+  color: #102a43;
+  max-width: 100%;
+}
+.messages p { margin: 0; font-size:15px; line-height:1.6; }
 .pager .pager-btn[disabled]{opacity:0.6;cursor:default;transform:none}
 
 @media (max-width:800px){
@@ -470,9 +582,9 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 .messages-header{background:#fff;border-bottom:2px solid #ddd}
 .messages{background:#fafafa}
 
-/* message bubbles: flat, no gradient, minimal shadow */
-.message{border-radius:4px;background:#fff;box-shadow:none;border:1px solid #e0e0e0;max-width:80%}
-.message.me{background:var(--accent);color:#fff;box-shadow:none;border:1px solid var(--accent);border-radius:4px}
+/* message bubbles: keep rounded, capped width and subtle shadow */
+.message{position:relative;display:inline-block;max-width:min(48ch,70%);padding:14px 18px;margin:0;border-radius:28px;background:#fff;box-shadow:0 10px 28px rgba(15,23,36,0.05);border:1px solid rgba(15,23,36,0.04);transition:transform 160ms ease, box-shadow 160ms ease;white-space:normal;word-break:break-word;overflow-wrap:anywhere}
+.message.me{position:relative;align-self:flex-end;background:linear-gradient(180deg,var(--accent), #1f7fdc);color:#fff;box-shadow:0 16px 36px rgba(31,127,220,0.09);border:1px solid rgba(0,0,0,0.04);border-radius:28px}
 
 /* header nav buttons: flatter styling */
 .topnav .nav-left a.btn{border-radius:4px;transition:background 120ms}
@@ -501,8 +613,8 @@ html,body{height:100%;margin:0;font-family:Inter, Roboto, Arial, sans-serif;back
 .toast{border-radius:4px;box-shadow:none}
 
 /* avatar: simple circle */
-.msg-avatar{box-shadow:none;border:1px solid #ddd}
-.message.me .msg-avatar{border-color:rgba(255,255,255,0.3);box-shadow:none}
+.msg-avatar{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;margin-right:10px;background:#e6f0ff;color:var(--accent);border:1px solid rgba(43,144,255,0.08);box-shadow:0 6px 18px rgba(15,23,36,0.04)}
+.message.me .msg-avatar{margin-left:8px;margin-right:0;background:rgba(255,255,255,0.18);color:#fff;border-color:rgba(255,255,255,0.08);box-shadow:0 6px 18px rgba(31,127,220,0.06)}
 
 /* sessions list: flat cards */
 #sessions .sessions-list li{box-shadow:none;border:1px solid #e0e0e0;border-radius:4px}

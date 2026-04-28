@@ -382,6 +382,15 @@
     // load pending invitations on startup
     loadPendingInvitations();
 
+    // periodically refresh pending invitations so invitees see new invites
+    try{
+      if(typeof window.__INV_POLL_INTERVAL === 'undefined'){
+        window.__INV_POLL_INTERVAL = setInterval(loadPendingInvitations, 15000); // 15s
+        window.addEventListener('focus', loadPendingInvitations);
+        document.addEventListener('visibilitychange', () => { if(!document.hidden) loadPendingInvitations(); });
+      }
+    }catch(e){}
+
     // expose for external use
     try{
       window.invitationsApi = {

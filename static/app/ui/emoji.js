@@ -4,12 +4,14 @@
     const emojiPicker = document.getElementById('emoji-picker');
     const input = document.getElementById('message-input');
     const emojiBtn = document.getElementById('emoji-btn');
-    const emojis = ['😀','😁','😂','🤣','😊','😍','😎','😅','🙂','😉','🙃','😘','🤔','😴','😡','👍','👎','🙏','🎉','🔥','💯','🚀','🌟','🍕','☕️','📎','📷','🖼️','🎵','✅','❌','➕','➖'];
+    const emojis = [
+      '😀','😁','😂','🤣','😊','😍','😎','😅','🙂','😉','🙃','😘','🤔','😴','😡','👍','👎','🙏','🎉','🔥','💯','🚀','🌟','🍕','🍔','🍟','🍣','🍩','☕️','🍺','🥂','🍷','📎','📷','🖼️','🎵','✅','❌','➕','➖','🧠','💡','🧡','💙','💚','💜','🤝','👏','🙌','🤝','🤗','😇','🤩','😻'
+    ];
     if(!emojiPicker) return;
     emojiPicker.innerHTML = '';
     const grid = document.createElement('div'); grid.className='emoji-grid';
     emojis.forEach(e=>{
-      const btn = document.createElement('button'); btn.type='button'; btn.textContent = e;
+      const btn = document.createElement('button'); btn.type='button'; btn.className='emoji-item'; btn.textContent = e;
       btn.addEventListener('click', ()=>{
         const pos = input.selectionStart || input.value.length;
         input.value = input.value.slice(0,pos) + e + input.value.slice(pos);
@@ -27,6 +29,8 @@
         emojiPicker.style.display = emojiPicker.style.display === 'block' ? 'none' : 'block';
       });
     }
+
+    // no stickers — simple emoji picker behavior
 
     // hide picker when clicking elsewhere
     document.addEventListener('click', ()=>{ if(emojiPicker) emojiPicker.style.display='none'; });
