@@ -34,7 +34,7 @@ These features make the application suitable as a reference implementation for t
 ## �🚀 Demo
 
 ![Chat UI](./docs/screenshots/chat-picker.png)
-![Rooms](./docs/screenshots/rooms.png)
+![Home](./docs/screenshots/home.png)
 
 
 ## 🏗️ Architecture (short)
@@ -50,5 +50,6 @@ These features make the application suitable as a reference implementation for t
 See full architecture → [docs/architecture.md](./docs/architecture.md)
 GIF demos (included in `docs/gif`):
 
-- `docs/gif/chat-app.gif` — GIF of sending a message / chat UI demo
-- `docs/gif/offilne-online-status-chat-app.gif` — GIF of presence status changing
+![Send message GIF](./docs/gif/chat-app.gif)
+
+![Presence status GIF](./docs/gif/offilne-online-status-chat-app.gif)

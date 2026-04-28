@@ -251,6 +251,12 @@ Manage room modal (admins view recent messages, ban/unban):
 
 ![Manage room screenshot](./screenshots/manage-room.png)
 
+GIF demonstrations
+
+![Chat send GIF](./gif/chat-app.gif)
+
+![Presence change GIF](./gif/offilne-online-status-chat-app.gif)
+
 ---
 
 ## Technical Stack
